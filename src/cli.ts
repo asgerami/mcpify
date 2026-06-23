@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { ingest } from "./parser/openapi.js";
+import { enrichTools } from "./generator/enrich.js";
 import { createMcpServer } from "./runtime/server.js";
 import { serveStdio, serveHttp } from "./runtime/transport.js";
 import {
@@ -40,11 +41,18 @@ program
     collect,
     [],
   )
+  .option(
+    "-e, --enrich",
+    "Run the LLM semantic-enrichment pass (needs ANTHROPIC_API_KEY)",
+  )
+  .option("-m, --model <id>", "Claude model for enrichment", "claude-opus-4-8")
+  .option("--effort <level>", "Enrichment reasoning effort: low | medium | high", "low")
   .action(async (options) => {
     try {
       const generated = await ingest(options.spec, {
         baseUrl: options.baseUrl,
       });
+      await maybeEnrich(generated, options);
       logSummary(generated);
 
       const creds = resolveCredentials(generated, options.auth);
@@ -83,11 +91,18 @@ program
   .requiredOption("-s, --spec <source>", "OpenAPI 3.x spec URL or file path")
   .option("-b, --base-url <url>", "Upstream API base URL")
   .option("--json", "Output the full tool definitions as JSON")
+  .option(
+    "-e, --enrich",
+    "Run the LLM semantic-enrichment pass (needs ANTHROPIC_API_KEY)",
+  )
+  .option("-m, --model <id>", "Claude model for enrichment", "claude-opus-4-8")
+  .option("--effort <level>", "Enrichment reasoning effort: low | medium | high", "low")
   .action(async (options) => {
     try {
       const generated = await ingest(options.spec, {
         baseUrl: options.baseUrl,
       });
+      await maybeEnrich(generated, options);
       if (options.json) {
         console.log(JSON.stringify(generated, null, 2));
         return;
@@ -116,6 +131,31 @@ program.parseAsync();
 
 function collect(value: string, previous: string[]): string[] {
   return previous.concat([value]);
+}
+
+/**
+ * Run the semantic-enrichment pass when --enrich is set, replacing the tools
+ * on `generated` in place. Requires ANTHROPIC_API_KEY in the environment.
+ */
+async function maybeEnrich(
+  generated: GeneratedServer,
+  options: { enrich?: boolean; model?: string; effort?: string },
+): Promise<void> {
+  if (!options.enrich) return;
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error(
+      "--enrich needs ANTHROPIC_API_KEY set in the environment.",
+    );
+  }
+  const effort = options.effort as "low" | "medium" | "high" | undefined;
+  console.error(
+    `\nEnriching ${generated.tools.length} tools with ${options.model}…`,
+  );
+  generated.tools = await enrichTools(generated.tools, {
+    model: options.model,
+    effort,
+    onBatch: (done, total) => console.error(`  enriched ${done}/${total}`),
+  });
 }
 
 function resolveCredentials(

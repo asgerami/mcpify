@@ -6,6 +6,13 @@
  */
 export { ingest, type ParseOptions } from "./parser/openapi.js";
 export { buildTools } from "./generator/tools.js";
+export {
+  enrichTools,
+  buildBatchPrompt,
+  applyEnrichment,
+  type EnrichOptions,
+  type EnrichmentBatchResult,
+} from "./generator/enrich.js";
 export { toolInputShape, jsonSchemaToZod } from "./generator/schema.js";
 export { createMcpServer, type RuntimeOptions } from "./runtime/server.js";
 export { executeTool, type ProxyContext, type RequestLog } from "./runtime/proxy.js";
