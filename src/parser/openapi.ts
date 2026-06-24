@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import SwaggerParser from "@apidevtools/swagger-parser";
 import type {
   GeneratedServer,
@@ -5,6 +6,7 @@ import type {
   SecurityScheme,
 } from "../types.js";
 import { buildTools } from "../generator/tools.js";
+import { isPostmanCollection, postmanToOpenAPI } from "./postman.js";
 
 export interface ParseOptions {
   /** Override the upstream base URL (e.g. when the spec omits `servers`). */
@@ -12,15 +14,15 @@ export interface ParseOptions {
 }
 
 /**
- * Ingestion pipeline: load an OpenAPI 3.x spec (URL, file path, JSON or YAML),
- * fully dereference `$ref`s, normalize it, and hand it to the generator.
+ * Ingestion pipeline: load an API description (OpenAPI 3.x or a Postman
+ * collection) from a URL or file, normalize it to canonical OpenAPI form, and
+ * hand it to the generator.
  */
 export async function ingest(
   specSource: string,
   opts: ParseOptions = {},
 ): Promise<GeneratedServer> {
-  // swagger-parser validates, resolves remote/relative $refs, and dereferences.
-  const api = (await SwaggerParser.dereference(specSource)) as OpenAPIDoc;
+  const api = await loadCanonical(specSource);
 
   if (!api.openapi?.startsWith("3")) {
     throw new Error(
@@ -40,6 +42,41 @@ export async function ingest(
     tools,
     securitySchemes,
   };
+}
+
+/**
+ * Load the source and normalize it to canonical OpenAPI form. A Postman
+ * collection is converted in-process; otherwise swagger-parser validates and
+ * dereferences `$ref`s from the original source (preserving ref resolution).
+ */
+async function loadCanonical(specSource: string): Promise<OpenAPIDoc> {
+  const probed = await tryLoadJson(specSource);
+  if (probed && isPostmanCollection(probed)) {
+    return postmanToOpenAPI(probed);
+  }
+  // swagger-parser validates, resolves remote/relative $refs, and dereferences.
+  return (await SwaggerParser.dereference(specSource)) as OpenAPIDoc;
+}
+
+/**
+ * Best-effort JSON load purely to sniff the format. Returns undefined for
+ * anything that isn't fetchable/readable JSON (e.g. YAML OpenAPI), in which
+ * case the caller defers to swagger-parser.
+ */
+async function tryLoadJson(specSource: string): Promise<unknown> {
+  try {
+    let text: string;
+    if (/^https?:\/\//i.test(specSource)) {
+      const res = await fetch(specSource);
+      if (!res.ok) return undefined;
+      text = await res.text();
+    } else {
+      text = await readFile(specSource, "utf8");
+    }
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }
 
 function resolveBaseUrl(api: OpenAPIDoc, override?: string): string {
@@ -129,7 +166,13 @@ export interface Operation {
     required?: boolean;
     content?: Record<string, { schema?: JsonSchema }>;
   };
+  responses?: Record<string, RawResponse>;
   security?: Array<Record<string, string[]>>;
+}
+
+export interface RawResponse {
+  description?: string;
+  content?: Record<string, { schema?: JsonSchema }>;
 }
 
 export interface RawParameter {
@@ -138,6 +181,10 @@ export interface RawParameter {
   required?: boolean;
   description?: string;
   schema?: JsonSchema;
+  /** OpenAPI serialization style; defaults depend on `in`. */
+  style?: string;
+  /** OpenAPI explode flag; default depends on `style`. */
+  explode?: boolean;
 }
 
 export const HTTP_METHODS = [
