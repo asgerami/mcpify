@@ -1,15 +1,20 @@
 #!/usr/bin/env node
+import { join } from "node:path";
 import { Command } from "commander";
 import { ingest } from "./parser/openapi.js";
 import { enrichTools } from "./generator/enrich.js";
 import { createMcpServer } from "./runtime/server.js";
 import { serveStdio, serveHttp } from "./runtime/transport.js";
+import { LogStore, type LogRow } from "./runtime/logstore.js";
 import {
   loadCredentialsFromEnv,
   parseAuthFlags,
   type CredentialStore,
 } from "./runtime/auth.js";
 import type { GeneratedServer } from "./types.js";
+
+/** Default location for the persistent usage-log database. */
+const DEFAULT_LOG_DB = join(process.cwd(), ".mcpify", "logs.db");
 
 const program = new Command();
 
@@ -47,6 +52,10 @@ program
   )
   .option("-m, --model <id>", "Claude model for enrichment", "claude-opus-4-8")
   .option("--effort <level>", "Enrichment reasoning effort: low | medium | high", "low")
+  .option(
+    "-l, --log-db [path]",
+    `Persist usage logs to a SQLite file (default: ${DEFAULT_LOG_DB})`,
+  )
   .action(async (options) => {
     try {
       const generated = await ingest(options.spec, {
@@ -58,15 +67,21 @@ program
       const creds = resolveCredentials(generated, options.auth);
       warnMissingCreds(generated, creds);
 
+      const store = openLogStore(options.logDb);
+      if (store) console.error(`→ logging tool calls to ${logDbPath(options.logDb)}`);
+
       const build = () =>
         createMcpServer(generated, {
           creds,
-          // Logs go to stderr so stdout stays clean for the stdio transport.
-          onLog: (e) =>
+          // Logs go to stderr so stdout stays clean for the stdio transport,
+          // and to the persistent store when --log-db is enabled.
+          onLog: (e) => {
             console.error(
               `[${e.statusCode ?? "ERR"}] ${e.method} ${e.tool} ${e.latencyMs}ms` +
                 (e.error ? ` — ${e.error}` : ""),
-            ),
+            );
+            store?.record(generated.name, e);
+          },
         });
 
       if (options.transport === "http") {
@@ -125,12 +140,85 @@ program
     }
   });
 
+program
+  .command("logs")
+  .description("Query persisted tool-call usage logs.")
+  .option("-d, --db [path]", `Log database path (default: ${DEFAULT_LOG_DB})`)
+  .option("--server <name>", "Filter by server name")
+  .option("--tool <name>", "Filter by tool name")
+  .option("--status <code>", "Filter by HTTP status code", (v) => Number(v))
+  .option("-n, --limit <number>", "Max rows to show", (v) => Number(v), 50)
+  .option("-f, --tail", "Follow the log, printing new calls as they arrive")
+  .option("--json", "Output rows as JSON")
+  .action(async (options) => {
+    try {
+      const store = LogStore.open(logDbPath(options.db));
+      const filter = {
+        server: options.server,
+        tool: options.tool,
+        status: options.status,
+        limit: options.limit,
+      };
+
+      if (options.tail) {
+        await tailLogs(store, filter, options.json);
+        return;
+      }
+
+      // Newest-first from the store; print oldest-first so the latest is last.
+      const rows = store.query(filter).reverse();
+      if (options.json) console.log(JSON.stringify(rows, null, 2));
+      else for (const row of rows) console.log(formatLogRow(row));
+      store.close();
+    } catch (err) {
+      fail(err);
+    }
+  });
+
 program.parseAsync();
 
 // ---- helpers ----
 
 function collect(value: string, previous: string[]): string[] {
   return previous.concat([value]);
+}
+
+/** Resolve the log DB path from a flag value (`true` → default path). */
+function logDbPath(flag: unknown): string {
+  return typeof flag === "string" ? flag : DEFAULT_LOG_DB;
+}
+
+/** Open a log store when --log-db was passed; otherwise return undefined. */
+function openLogStore(flag: unknown): LogStore | undefined {
+  return flag ? LogStore.open(logDbPath(flag)) : undefined;
+}
+
+function formatLogRow(row: LogRow): string {
+  const ts = new Date(row.timestamp).toISOString();
+  const status = row.error ? "ERR" : (row.status_code ?? "?");
+  const tail = row.error ? ` — ${row.error}` : "";
+  return `${ts}  [${status}] ${row.method} ${row.tool} (${row.server}) ${row.latency_ms}ms${tail}`;
+}
+
+/** Poll the store for new rows and print them until interrupted. */
+async function tailLogs(
+  store: LogStore,
+  filter: { server?: string; tool?: string; status?: number },
+  asJson?: boolean,
+): Promise<void> {
+  // Seed from the most recent existing id so we only show new calls.
+  const seed = store.query({ ...filter, limit: 1 });
+  let lastId = seed[0]?.id ?? 0;
+  console.error("Tailing usage logs — press Ctrl+C to stop.");
+
+  for (;;) {
+    const rows = store.query({ ...filter, afterId: lastId, limit: 500 });
+    for (const row of rows) {
+      console.log(asJson ? JSON.stringify(row) : formatLogRow(row));
+      lastId = row.id;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
 }
 
 /**

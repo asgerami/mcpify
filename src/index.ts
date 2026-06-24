@@ -23,4 +23,9 @@ export {
   type CredentialStore,
 } from "./runtime/auth.js";
 export { serveStdio, serveHttp } from "./runtime/transport.js";
+export {
+  LogStore,
+  type LogRow,
+  type LogQuery,
+} from "./runtime/logstore.js";
 export * from "./types.js";
