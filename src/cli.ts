@@ -9,6 +9,7 @@ import { watchSpec } from "./runtime/watch.js";
 import { diffTools, formatDiff, hasChanges } from "./generator/diff.js";
 import { LogStore, type LogRow } from "./runtime/logstore.js";
 import { ServerRegistry } from "./controlplane/registry.js";
+import { ServerStore } from "./controlplane/store.js";
 import { buildControlPlane } from "./controlplane/api.js";
 import type { RequestLog } from "./runtime/proxy.js";
 import {
@@ -217,8 +218,19 @@ program
   )
   .action(async (options) => {
     try {
-      const store = LogStore.open(logDbPath(options.logDb));
-      const registry = new ServerRegistry({ logStore: store });
+      const dbPath = logDbPath(options.logDb);
+      const registry = new ServerRegistry({
+        logStore: LogStore.open(dbPath),
+        serverStore: ServerStore.open(dbPath),
+      });
+
+      // Rehydrate previously-created servers by re-ingesting their specs.
+      const { restored, failed } = await registry.load();
+      if (restored) console.error(`→ restored ${restored} server(s) from ${dbPath}`);
+      for (const f of failed) {
+        console.error(`⚠ could not restore "${f.id}": ${f.error}`);
+      }
+
       const app = buildControlPlane(registry);
       const port = Number(options.port);
       await app.listen({ port, host: options.host });
@@ -226,7 +238,7 @@ program
         `\nMCPify control plane on http://${options.host}:${port}\n` +
           `  POST /servers   {"spec":"<url|file>"}\n` +
           `  GET  /servers   ·   hosted MCP at /servers/<id>/mcp\n` +
-          `Logging to ${logDbPath(options.logDb)}. Press Ctrl+C to stop.`,
+          `Persisting servers + logs to ${dbPath}. Press Ctrl+C to stop.`,
       );
     } catch (err) {
       fail(err);

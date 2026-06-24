@@ -36,6 +36,7 @@ export {
   type CreateServerInput,
   type RegistryOptions,
 } from "./controlplane/registry.js";
+export { ServerStore, type ServerRecord } from "./controlplane/store.js";
 export { buildControlPlane } from "./controlplane/api.js";
 export { executeTool, type ProxyContext, type RequestLog } from "./runtime/proxy.js";
 export {
