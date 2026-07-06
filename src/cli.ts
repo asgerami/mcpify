@@ -11,6 +11,7 @@ import { LogStore, type LogRow } from "./runtime/logstore.js";
 import { ServerRegistry } from "./controlplane/registry.js";
 import { ServerStore } from "./controlplane/store.js";
 import { Vault } from "./controlplane/vault.js";
+import { seedRegistry, defaultManifestPath } from "./controlplane/seed.js";
 import { buildControlPlane } from "./controlplane/api.js";
 import type { RequestLog } from "./runtime/proxy.js";
 import {
@@ -217,6 +218,10 @@ program
     "-l, --log-db [path]",
     `Usage-log SQLite file (default: ${DEFAULT_LOG_DB})`,
   )
+  .option(
+    "-S, --seed [manifest]",
+    "Seed prebuilt server anchors from a manifest (default: bundled)",
+  )
   .action(async (options) => {
     try {
       const dbPath = logDbPath(options.logDb);
@@ -238,6 +243,16 @@ program
       if (restored) console.error(`→ restored ${restored} server(s) from ${dbPath}`);
       for (const f of failed) {
         console.error(`⚠ could not restore "${f.id}": ${f.error}`);
+      }
+
+      // Seed prebuilt anchor servers, if requested.
+      if (options.seed) {
+        const manifest = typeof options.seed === "string" ? options.seed : defaultManifestPath();
+        console.error(`→ seeding prebuilt servers from ${manifest}…`);
+        const seed = await seedRegistry(registry, manifest);
+        if (seed.created.length) console.error(`  created: ${seed.created.join(", ")}`);
+        if (seed.skipped.length) console.error(`  already present: ${seed.skipped.join(", ")}`);
+        for (const f of seed.failed) console.error(`  ⚠ ${f.name}: ${f.error}`);
       }
 
       const app = buildControlPlane(registry);

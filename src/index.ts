@@ -39,6 +39,13 @@ export {
 export { ServerStore, type ServerRecord } from "./controlplane/store.js";
 export { Vault } from "./controlplane/vault.js";
 export { buildControlPlane } from "./controlplane/api.js";
+export {
+  seedRegistry,
+  loadManifest,
+  defaultManifestPath,
+  type SeedEntry,
+  type SeedResult,
+} from "./controlplane/seed.js";
 export { executeTool, type ProxyContext, type RequestLog } from "./runtime/proxy.js";
 export {
   loadCredentialsFromEnv,

@@ -1,0 +1,76 @@
+openapi: 3.0.3
+info:
+  title: JSONPlaceholder
+  version: "1.0.0"
+  description: A free fake REST API for testing — great for trying out MCPify end-to-end.
+servers:
+  - url: https://jsonplaceholder.typicode.com
+paths:
+  /posts:
+    get:
+      operationId: listPosts
+      summary: List posts
+      description: Returns all blog posts, optionally filtered by the author's user id.
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          description: Filter posts to a single author by their user id.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: An array of posts.
+    post:
+      operationId: createPost
+      summary: Create a post
+      description: Create a new blog post authored by a given user.
+      requestBody:
+        required: true
+        description: The post to create.
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, body, userId]
+              properties:
+                title:
+                  type: string
+                  description: The post title.
+                body:
+                  type: string
+                  description: The post body text.
+                userId:
+                  type: integer
+                  description: The id of the authoring user.
+      responses:
+        "201":
+          description: The created post.
+  /posts/{id}:
+    get:
+      operationId: getPost
+      summary: Get a post by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The id of the post to fetch.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: A single post.
+  /users/{id}:
+    get:
+      operationId: getUser
+      summary: Get a user by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The id of the user to fetch.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: A single user.

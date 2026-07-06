@@ -1,0 +1,25 @@
+{
+  "$comment": "Prebuilt server anchors — popular APIs ready to host. Local specs work offline; URL specs are fetched on first seed, then persisted. Failures are reported and skipped, so one unreachable spec doesn't block the rest.",
+  "servers": [
+    {
+      "name": "JSONPlaceholder",
+      "spec": "./jsonplaceholder.yaml",
+      "note": "Free fake REST API — works offline, no auth. Great first demo."
+    },
+    {
+      "name": "Swagger Petstore",
+      "spec": "https://petstore3.swagger.io/api/v3/openapi.json",
+      "note": "The canonical OpenAPI example."
+    },
+    {
+      "name": "Stripe",
+      "spec": "https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json",
+      "note": "Payments API (large spec)."
+    },
+    {
+      "name": "GitHub",
+      "spec": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
+      "note": "GitHub REST API (large spec)."
+    }
+  ]
+}
