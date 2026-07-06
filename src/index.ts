@@ -45,7 +45,21 @@ export {
 } from "./controlplane/registry.js";
 export { ServerStore, type ServerRecord } from "./controlplane/store.js";
 export { Vault } from "./controlplane/vault.js";
-export { buildControlPlane } from "./controlplane/api.js";
+export { buildControlPlane, type ControlPlaneOptions } from "./controlplane/api.js";
+export {
+  OAuthManager,
+  type OAuthConfigInput,
+  type OAuthStatus,
+} from "./controlplane/oauth-manager.js";
+export {
+  buildAuthorizeUrl,
+  exchangeCode,
+  refreshTokens,
+  generateCodeVerifier,
+  codeChallenge,
+  type OAuthConfig,
+  type TokenSet,
+} from "./controlplane/oauth.js";
 export {
   seedRegistry,
   loadManifest,

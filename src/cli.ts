@@ -12,6 +12,7 @@ import { LogStore, type LogRow } from "./runtime/logstore.js";
 import { ServerRegistry } from "./controlplane/registry.js";
 import { ServerStore } from "./controlplane/store.js";
 import { Vault } from "./controlplane/vault.js";
+import { OAuthManager } from "./controlplane/oauth-manager.js";
 import { seedRegistry, defaultManifestPath } from "./controlplane/seed.js";
 import { buildControlPlane } from "./controlplane/api.js";
 import type { RequestLog } from "./runtime/proxy.js";
@@ -233,9 +234,10 @@ program
     try {
       const dbPath = logDbPath(options.logDb);
       const vault = Vault.fromEnv();
+      const serverStore = ServerStore.open(dbPath);
       const registry = new ServerRegistry({
         logStore: LogStore.open(dbPath),
-        serverStore: ServerStore.open(dbPath),
+        serverStore,
         vault,
       });
       console.error(
@@ -262,8 +264,24 @@ program
         for (const f of seed.failed) console.error(`  ⚠ ${f.name}: ${f.error}`);
       }
 
-      const app = buildControlPlane(registry);
       const port = Number(options.port);
+      // OAuth needs a vault to encrypt tokens; enabled only when the key is set.
+      const oauth = vault
+        ? new OAuthManager({
+            registry,
+            store: serverStore,
+            vault,
+            callbackUrl: `http://${options.host}:${port}/oauth/callback`,
+          })
+        : undefined;
+      if (oauth) await oauth.restoreAll();
+      console.error(
+        oauth
+          ? "→ OAuth2 authorization-code flow enabled"
+          : "⚠ OAuth2 disabled (needs MCPIFY_SECRET_KEY)",
+      );
+
+      const app = buildControlPlane(registry, { oauth });
       await app.listen({ port, host: options.host });
       console.error(
         `\nMCPify control plane on http://${options.host}:${port}\n` +

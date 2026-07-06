@@ -240,43 +240,98 @@ async function renderTab(id) {
           <td class="meta">${l.latency_ms}ms</td>
         </tr>`).join("")}</tbody></table>` : '<div class="empty">No calls logged yet.</div>';
     } else {
-      renderCredentials(id, panel);
+      await renderCredentials(id, panel);
     }
   } catch (e) { panel.innerHTML = '<div class="empty">' + esc(e.message) + "</div>"; }
 }
 
-function renderCredentials(id, panel) {
+async function renderCredentials(id, panel) {
   const schemes = (currentDetail && currentDetail.securitySchemes) || [];
   if (!schemes.length) {
     panel.innerHTML = '<div class="empty">This API requires no credentials.</div>';
     return;
   }
+  // OAuth statuses (connected?) drive the oauth2 blocks.
+  let statusBy = {};
+  try {
+    const statuses = await api("/servers/" + id + "/oauth");
+    for (const st of statuses) statusBy[st.scheme] = st;
+  } catch { /* oauth may be disabled — treat as unconfigured */ }
+
   panel.innerHTML = `
     <p class="meta" style="margin:2px 0 12px">
       Credentials are injected server-side at request time and never returned. With
       <code>MCPIFY_SECRET_KEY</code> set they're encrypted at rest.
     </p>
-    ${schemes.map((s, i) => `
-      <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:10px">
-        <div style="flex:1">
-          <label>${esc(s.name)} <span class="meta">(${esc(s.type)} · ${esc(s.detail || "")})</span></label>
-          <input type="password" id="cred-${i}" placeholder="${s.type === "http" && s.detail === "basic" ? "user:password" : "value"}" />
-        </div>
-        <button data-scheme="${esc(s.name)}" data-i="${i}" class="primary">Set</button>
-      </div>`).join("")}`;
-  panel.querySelectorAll("button[data-scheme]").forEach((btn) =>
+    ${schemes.map((s, i) => s.type === "oauth2"
+      ? oauthBlock(s, i, statusBy[s.name])
+      : valueBlock(s, i)).join("")}`;
+
+  // Static credential schemes (apiKey/http): set a value.
+  panel.querySelectorAll("button[data-set]").forEach((btn) =>
     btn.addEventListener("click", async () => {
       const value = $("#cred-" + btn.dataset.i).value;
       if (!value) { toast("Enter a value"); return; }
       try {
         await api("/servers/" + id + "/credentials", {
           method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ scheme: btn.dataset.scheme, value }),
+          body: JSON.stringify({ scheme: btn.dataset.set, value }),
         });
         $("#cred-" + btn.dataset.i).value = "";
-        toast("Credential set for " + btn.dataset.scheme);
+        toast("Credential set for " + btn.dataset.set);
       } catch (e) { toast(e.message); }
     }));
+
+  // OAuth2 schemes: save client config, then open the provider consent screen.
+  panel.querySelectorAll("button[data-oauth]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const scheme = btn.dataset.oauth, i = btn.dataset.i;
+      const clientId = $("#oa-cid-" + i).value.trim();
+      if (!clientId) { toast("Client ID required"); return; }
+      const payload = { clientId };
+      const secret = $("#oa-sec-" + i).value.trim();
+      if (secret) payload.clientSecret = secret;
+      try {
+        await api("/servers/" + id + "/oauth/" + encodeURIComponent(scheme) + "/config", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        window.open("/servers/" + id + "/oauth/" + encodeURIComponent(scheme) + "/authorize", "_blank");
+        toast("Opening authorization… complete it, then Refresh");
+      } catch (e) { toast(e.message); }
+    }));
+  panel.querySelectorAll(".creds-refresh").forEach((b) =>
+    b.addEventListener("click", () => renderTab(id)));
+}
+
+function valueBlock(s, i) {
+  return `<div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:10px">
+    <div style="flex:1">
+      <label>${esc(s.name)} <span class="meta">(${esc(s.type)} · ${esc(s.detail || "")})</span></label>
+      <input type="password" id="cred-${i}" placeholder="${s.type === "http" && s.detail === "basic" ? "user:password" : "value"}" />
+    </div>
+    <button data-set="${esc(s.name)}" data-i="${i}" class="primary">Set</button>
+  </div>`;
+}
+
+function oauthBlock(s, i, status) {
+  const connected = status && status.connected;
+  const badge = connected
+    ? '<span class="status-ok">● connected</span>'
+    : '<span class="meta">not connected</span>';
+  return `<div style="border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px">
+    <label style="display:flex; justify-content:space-between">
+      <span>${esc(s.name)} <span class="meta">(oauth2)</span></span> ${badge}
+    </label>
+    <div style="display:grid; gap:6px; margin-top:6px">
+      <input id="oa-cid-${i}" placeholder="Client ID" />
+      <input id="oa-sec-${i}" type="password" placeholder="Client Secret (if required)" />
+      <div style="display:flex; gap:8px">
+        <button data-oauth="${esc(s.name)}" data-i="${i}" class="primary">${connected ? "Reconnect" : "Connect"}</button>
+        <button class="ghost creds-refresh">Refresh status</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 async function regenerate(id) {
