@@ -99,6 +99,8 @@
   <h1>MCPify</h1>
   <span class="badge" id="server-count">…</span>
   <span class="spacer"></span>
+  <input id="admin-token" type="password" placeholder="Admin token (if required)"
+    style="width:200px;padding:5px 9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;font-size:12px" />
   <span class="badge">control plane</span>
 </header>
 
@@ -148,10 +150,16 @@ function toast(msg) {
   clearTimeout(t._timer); t._timer = setTimeout(() => t.classList.remove("show"), 1800);
 }
 
-async function api(path, opts) {
-  const res = await fetch(path, opts);
+function adminToken() { return localStorage.getItem("mcpify_admin_token") || ""; }
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({}, opts.headers);
+  const tok = adminToken();
+  if (tok) headers["Authorization"] = "Bearer " + tok;
+  const res = await fetch(path, Object.assign({}, opts, { headers }));
   const type = res.headers.get("content-type") || "";
   const body = type.includes("json") ? await res.json() : await res.text();
+  if (res.status === 401) throw new Error("Unauthorized — set the admin token (top right).");
   if (!res.ok) throw new Error((body && body.error) || ("HTTP " + res.status));
   return body;
 }
@@ -189,8 +197,13 @@ async function selectServer(id) {
       <div class="sub">${esc(s.baseUrl)} · ${s.toolCount} tools · spec ${esc(s.specHash)}</div>
       <div class="urlbar">
         <code id="mcp-url">${esc(mcpUrl)}</code>
-        <button id="copy-url">Copy MCP URL</button>
+        <button id="copy-url">Copy URL</button>
       </div>
+      ${s.mcpToken ? `<div class="urlbar">
+        <code id="mcp-token">Bearer ${esc(s.mcpToken)}</code>
+        <button id="copy-token">Copy token</button>
+      </div>
+      <p class="meta" style="margin:6px 0 0">Agents must send this token as an <code>Authorization</code> header.</p>` : ""}
       <div class="actions">
         <button id="regen-btn" class="ghost">Regenerate</button>
         <button id="del-btn" class="ghost" style="color:var(--err)">Delete</button>
@@ -205,6 +218,11 @@ async function selectServer(id) {
 
   $("#copy-url").addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(mcpUrl); toast("MCP URL copied"); }
+    catch { toast("Copy failed — select manually"); }
+  });
+  const copyTok = $("#copy-token");
+  if (copyTok) copyTok.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText("Bearer " + s.mcpToken); toast("Token copied"); }
     catch { toast("Copy failed — select manually"); }
   });
   $("#regen-btn").addEventListener("click", () => regenerate(id));
@@ -296,7 +314,9 @@ async function renderCredentials(id, panel) {
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
         });
-        window.open("/servers/" + id + "/oauth/" + encodeURIComponent(scheme) + "/authorize", "_blank");
+        // Authorize returns the provider URL as JSON (admin-gated); open it.
+        const { url } = await api("/servers/" + id + "/oauth/" + encodeURIComponent(scheme) + "/authorize");
+        window.open(url, "_blank");
         toast("Opening authorization… complete it, then Refresh");
       } catch (e) { toast(e.message); }
     }));
@@ -369,6 +389,16 @@ $("#create-form").addEventListener("submit", async (e) => {
     await selectServer(created.id);
   } catch (e) { toast(e.message); }
   finally { btn.disabled = false; btn.textContent = "Create server"; }
+});
+
+// Admin token: persist to localStorage and reload on change.
+const tokenInput = $("#admin-token");
+tokenInput.value = adminToken();
+tokenInput.addEventListener("change", () => {
+  localStorage.setItem("mcpify_admin_token", tokenInput.value.trim());
+  selected = null;
+  $("#detail").innerHTML = '<div class="empty">Select a server, or create one to get started.</div>';
+  loadServers().catch((e) => toast(e.message));
 });
 
 loadServers().catch((e) => toast(e.message));
