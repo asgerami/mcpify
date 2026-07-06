@@ -1,5 +1,7 @@
 # MCPify
 
+[![CI](https://github.com/asgerami/mcpify/actions/workflows/ci.yml/badge.svg)](https://github.com/asgerami/mcpify/actions/workflows/ci.yml)
+
 **Turn any REST API into an agent-ready MCP server in minutes.**
 
 Paste an OpenAPI 3.x spec, get a hosted [Model Context Protocol](https://modelcontextprotocol.io)
@@ -39,15 +41,20 @@ keep ingestion and schema generation robust.
 
 ## Quick start
 
+Requires **Node 22+** (uses the built-in `node:sqlite`).
+
 ```bash
+# Install the CLI globally…
+npm install -g mcpify
+mcpify inspect --spec examples/jsonplaceholder.yaml
+
+# …or run from source
 npm install
-npm run build        # or use `npm run dev -- …` to run from source via tsx
+npm run dev -- inspect  --spec examples/jsonplaceholder.yaml   # see the tools
+npm run dev -- generate --spec examples/jsonplaceholder.yaml   # serve over stdio
 
-# Inspect what tools a spec produces (no server)
-npm run dev -- inspect --spec examples/jsonplaceholder.yaml
-
-# Serve it as an MCP server over stdio
-npm run dev -- generate --spec examples/jsonplaceholder.yaml
+# Or bring up the control plane + dashboard with popular APIs pre-loaded
+mcpify serve --seed          # → http://localhost:4000
 ```
 
 ### CLI
@@ -69,10 +76,11 @@ mcpify generate --spec <url|file> [options]
 mcpify inspect --spec <url|file> [--json] [--enrich]
   Parse a spec and print the generated tools without serving.
 
-mcpify serve [options]            # control-plane API hosting many MCP servers
+mcpify serve [options]            # control-plane API + dashboard hosting many servers
   -p, --port <number>     Port to listen on (default 4000)
   -H, --host <host>       Host to bind (default 127.0.0.1)
   -l, --log-db [path]     Usage-log SQLite file (default .mcpify/logs.db)
+  -S, --seed [manifest]   Seed prebuilt server anchors (default: bundled)
 
 mcpify logs [options]
   -d, --db [path]         Log database path (default .mcpify/logs.db)
@@ -161,6 +169,12 @@ usage logs, copy MCP URLs, regenerate, and delete:
 mcpify serve --port 4000
 # open http://localhost:4000  →  dashboard
 ```
+
+**Prebuilt anchors:** `mcpify serve --seed` boots with a curated set of
+popular-API servers ready to use (from [prebuilt/manifest.json](prebuilt/manifest.json) —
+JSONPlaceholder works offline; Petstore/Stripe/GitHub are fetched on first
+seed). Seeding is idempotent and skips anything already present, so an
+unreachable spec never blocks the rest.
 
 ```bash
 mcpify serve --port 4000
@@ -299,6 +313,9 @@ src/
   controlplane/vault.ts     AES-256-GCM credential encryption
   controlplane/api.ts       Fastify REST API + hosted MCP endpoints
   controlplane/dashboard.html  Self-contained dashboard page
+  controlplane/seed.ts      Prebuilt server anchors (seed a manifest)
+prebuilt/                 Manifest + specs for popular-API anchors
+.github/workflows/ci.yml  Typecheck + build + test on push/PR
   cli.ts                `mcpify generate` / `inspect` / `logs` / `serve`
 examples/               Sample specs to try
 test/                   Unit, network, and e2e tests
