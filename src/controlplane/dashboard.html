@@ -140,6 +140,7 @@
 const $ = (s, el = document) => el.querySelector(s);
 let selected = null;
 let activeTab = "tools";
+let currentDetail = null;
 
 function toast(msg) {
   const t = $("#toast");
@@ -180,6 +181,7 @@ async function selectServer(id) {
   selected = id;
   await loadServers();
   const s = await api("/servers/" + id);
+  currentDetail = s;
   const mcpUrl = location.origin + s.mcpPath;
   $("#detail").innerHTML = `
     <div class="head">
@@ -197,6 +199,7 @@ async function selectServer(id) {
     <div class="tabs">
       <button data-tab="tools" class="${activeTab === "tools" ? "active" : ""}">Tools</button>
       <button data-tab="logs" class="${activeTab === "logs" ? "active" : ""}">Logs</button>
+      <button data-tab="creds" class="${activeTab === "creds" ? "active" : ""}">Credentials</button>
     </div>
     <div class="tabpanel" id="tabpanel"></div>`;
 
@@ -226,7 +229,7 @@ async function renderTab(id) {
           <td><code>${esc(t.path)}</code></td>
           <td>${t.security && t.security.length ? "🔒 " + esc(t.security.join(", ")) : "—"}</td>
         </tr>`).join("")}</tbody></table>` : '<div class="empty">No tools.</div>';
-    } else {
+    } else if (activeTab === "logs") {
       const logs = await api("/servers/" + id + "/logs?limit=100");
       panel.innerHTML = logs.length ? `<table>
         <thead><tr><th>Time</th><th>Status</th><th>Tool</th><th>Latency</th></tr></thead>
@@ -236,8 +239,44 @@ async function renderTab(id) {
           <td><code>${esc(l.tool)}</code> <span class="meta">${esc(l.method)}</span></td>
           <td class="meta">${l.latency_ms}ms</td>
         </tr>`).join("")}</tbody></table>` : '<div class="empty">No calls logged yet.</div>';
+    } else {
+      renderCredentials(id, panel);
     }
   } catch (e) { panel.innerHTML = '<div class="empty">' + esc(e.message) + "</div>"; }
+}
+
+function renderCredentials(id, panel) {
+  const schemes = (currentDetail && currentDetail.securitySchemes) || [];
+  if (!schemes.length) {
+    panel.innerHTML = '<div class="empty">This API requires no credentials.</div>';
+    return;
+  }
+  panel.innerHTML = `
+    <p class="meta" style="margin:2px 0 12px">
+      Credentials are injected server-side at request time and never returned. With
+      <code>MCPIFY_SECRET_KEY</code> set they're encrypted at rest.
+    </p>
+    ${schemes.map((s, i) => `
+      <div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:10px">
+        <div style="flex:1">
+          <label>${esc(s.name)} <span class="meta">(${esc(s.type)} · ${esc(s.detail || "")})</span></label>
+          <input type="password" id="cred-${i}" placeholder="${s.type === "http" && s.detail === "basic" ? "user:password" : "value"}" />
+        </div>
+        <button data-scheme="${esc(s.name)}" data-i="${i}" class="primary">Set</button>
+      </div>`).join("")}`;
+  panel.querySelectorAll("button[data-scheme]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const value = $("#cred-" + btn.dataset.i).value;
+      if (!value) { toast("Enter a value"); return; }
+      try {
+        await api("/servers/" + id + "/credentials", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ scheme: btn.dataset.scheme, value }),
+        });
+        $("#cred-" + btn.dataset.i).value = "";
+        toast("Credential set for " + btn.dataset.scheme);
+      } catch (e) { toast(e.message); }
+    }));
 }
 
 async function regenerate(id) {
