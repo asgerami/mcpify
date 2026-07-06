@@ -230,6 +230,20 @@ program
     "-S, --seed [manifest]",
     "Seed prebuilt server anchors from a manifest (default: bundled)",
   )
+  .option(
+    "-u, --public-url <url>",
+    "Public base URL for OAuth callbacks (env MCPIFY_PUBLIC_URL)",
+  )
+  .option(
+    "-a, --admin-token <token>",
+    "Require this Bearer token on the management API (env MCPIFY_ADMIN_TOKEN)",
+  )
+  .option(
+    "-r, --rate-limit <perMin>",
+    "Per-server request/min limit on the hosted MCP endpoint (0 = off)",
+    (v) => Number(v),
+    0,
+  )
   .action(async (options) => {
     try {
       const dbPath = logDbPath(options.logDb);
@@ -265,13 +279,17 @@ program
       }
 
       const port = Number(options.port);
+      const publicBase = (options.publicUrl ?? process.env.MCPIFY_PUBLIC_URL ??
+        `http://${options.host}:${port}`).replace(/\/+$/, "");
+      const adminToken = options.adminToken ?? process.env.MCPIFY_ADMIN_TOKEN;
+
       // OAuth needs a vault to encrypt tokens; enabled only when the key is set.
       const oauth = vault
         ? new OAuthManager({
             registry,
             store: serverStore,
             vault,
-            callbackUrl: `http://${options.host}:${port}/oauth/callback`,
+            callbackUrl: `${publicBase}/oauth/callback`,
           })
         : undefined;
       if (oauth) await oauth.restoreAll();
@@ -281,12 +299,39 @@ program
           : "⚠ OAuth2 disabled (needs MCPIFY_SECRET_KEY)",
       );
 
-      const app = buildControlPlane(registry, { oauth });
+      // Warn loudly if the management API is exposed without an admin token.
+      const localOnly = ["127.0.0.1", "localhost", "::1"].includes(options.host);
+      if (adminToken) console.error("→ management API requires an admin token");
+      else if (!localOnly) {
+        console.error(
+          "⚠ management API is UNAUTHENTICATED and bound to a non-local host. " +
+            "Set --admin-token / MCPIFY_ADMIN_TOKEN before exposing it.",
+        );
+      }
+      if (options.rateLimit > 0) {
+        console.error(`→ rate limit: ${options.rateLimit} req/min per server`);
+      }
+
+      const app = buildControlPlane(registry, {
+        oauth,
+        adminToken,
+        rateLimitPerMin: options.rateLimit,
+      });
+
+      // Graceful shutdown so in-flight requests finish and the DB closes.
+      const shutdown = async () => {
+        console.error("\nshutting down…");
+        await app.close().catch(() => {});
+        process.exit(0);
+      };
+      process.once("SIGTERM", shutdown);
+      process.once("SIGINT", shutdown);
+
       await app.listen({ port, host: options.host });
       console.error(
-        `\nMCPify control plane on http://${options.host}:${port}\n` +
-          `  POST /servers   {"spec":"<url|file>"}\n` +
-          `  GET  /servers   ·   hosted MCP at /servers/<id>/mcp\n` +
+        `\nMCPify control plane on http://${options.host}:${port}` +
+          (publicBase !== `http://${options.host}:${port}` ? ` (public: ${publicBase})` : "") +
+          `\n  dashboard at /   ·   hosted MCP at /servers/<id>/mcp (Bearer token)\n` +
           `Persisting servers + logs to ${dbPath}. Press Ctrl+C to stop.`,
       );
     } catch (err) {
