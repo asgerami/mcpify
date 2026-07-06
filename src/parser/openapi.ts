@@ -54,8 +54,23 @@ async function loadCanonical(specSource: string): Promise<OpenAPIDoc> {
   if (probed && isPostmanCollection(probed)) {
     return postmanToOpenAPI(probed);
   }
-  // swagger-parser validates, resolves remote/relative $refs, and dereferences.
+  // If we already fetched/parsed a JSON OpenAPI doc, dereference the object
+  // directly. This avoids a second download of large specs and sidesteps
+  // swagger-parser's own URL resolver (which can fail on some hosts).
+  if (probed && isOpenApiObject(probed)) {
+    return (await SwaggerParser.dereference(
+      probed as Parameters<typeof SwaggerParser.dereference>[0],
+    )) as OpenAPIDoc;
+  }
+  // YAML or otherwise: let swagger-parser fetch, validate, and dereference.
   return (await SwaggerParser.dereference(specSource)) as OpenAPIDoc;
+}
+
+/** Whether a parsed object is an OpenAPI/Swagger document. */
+function isOpenApiObject(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.openapi === "string" || typeof obj.swagger === "string";
 }
 
 /**
