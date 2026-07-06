@@ -153,7 +153,14 @@ exported for programmatic use.
 
 `mcpify serve` starts a Fastify REST API that manages **many** generated servers
 at once and hosts each as a live MCP endpoint at `/servers/:id/mcp` (Streamable
-HTTP) — the backend a dashboard and the CLI both talk to.
+HTTP). It also serves a **dashboard** at `/` — a single self-contained page (no
+build step, no external assets) to create servers, inspect their tools, browse
+usage logs, copy MCP URLs, regenerate, and delete:
+
+```bash
+mcpify serve --port 4000
+# open http://localhost:4000  →  dashboard
+```
 
 ```bash
 mcpify serve --port 4000
@@ -291,6 +298,7 @@ src/
   controlplane/store.ts     Durable server records + creds (SQLite)
   controlplane/vault.ts     AES-256-GCM credential encryption
   controlplane/api.ts       Fastify REST API + hosted MCP endpoints
+  controlplane/dashboard.html  Self-contained dashboard page
   cli.ts                `mcpify generate` / `inspect` / `logs` / `serve`
 examples/               Sample specs to try
 test/                   Unit, network, and e2e tests
@@ -304,8 +312,8 @@ serialization, response `outputSchema` / `structuredContent`, persistent SQLite
 usage logs (`--log-db` + `mcpify logs`), live spec sync (`--watch`: re-ingest,
 diff, and hot-reload tools without dropping connections), and a control-plane
 REST API (`mcpify serve`) that hosts many servers and their MCP endpoints, with
-**durable server records** (servers survive a restart), and **credential
-encryption at rest** (AES-256-GCM via `MCPIFY_SECRET_KEY`). Not yet built here:
-the dashboard UI, multi-tenant deployment, OAuth2 authorization-code flow, and
-spec auto-discovery. The code is structured so each of these layers on top of
-the existing pipeline.
+**durable server records** (servers survive a restart), **credential encryption
+at rest** (AES-256-GCM via `MCPIFY_SECRET_KEY`), and a **dashboard** served at
+`/`. Not yet built here: multi-tenant deployment, OAuth2 authorization-code
+flow, and spec auto-discovery. The code is structured so each of these layers on
+top of the existing pipeline.
