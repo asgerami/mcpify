@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>MCPify · Control Plane</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%8C%3C/text%3E%3C/svg%3E" />
 <style>
   :root {
     --bg: #f7f7f8; --panel: #ffffff; --border: #e5e5ea; --text: #1d1d1f;
@@ -229,6 +230,7 @@ async function selectServer(id) {
       </div>
       <p class="meta" style="margin:6px 0 0">Agents must send this token as an <code>Authorization</code> header.</p>` : ""}
       <div class="actions">
+        ${s.mcpToken ? '<button id="copy-config">Copy MCP config</button>' : ""}
         <button id="regen-btn" class="ghost">Regenerate</button>
         <button id="del-btn" class="ghost" style="color:var(--err)">Delete</button>
       </div>
@@ -249,6 +251,12 @@ async function selectServer(id) {
     try { await navigator.clipboard.writeText("Bearer " + s.mcpToken); toast("Token copied"); }
     catch { toast("Copy failed — select manually"); }
   });
+  const copyCfg = $("#copy-config");
+  if (copyCfg) copyCfg.addEventListener("click", async () => {
+    const config = { mcpServers: { [s.slug]: { url: mcpUrl, headers: { Authorization: "Bearer " + s.mcpToken } } } };
+    try { await navigator.clipboard.writeText(JSON.stringify(config, null, 2)); toast("MCP config copied"); }
+    catch { toast("Copy failed"); }
+  });
   $("#regen-btn").addEventListener("click", () => regenerate(id));
   $("#del-btn").addEventListener("click", () => removeServer(id, s.name));
   $("#detail").querySelectorAll(".tabs button").forEach((b) =>
@@ -264,15 +272,7 @@ async function renderTab(id) {
     if (activeTab === "tools") {
       await renderTools(id, panel);
     } else if (activeTab === "logs") {
-      const logs = await api("/servers/" + id + "/logs?limit=100");
-      panel.innerHTML = logs.length ? `<table>
-        <thead><tr><th>Time</th><th>Status</th><th>Tool</th><th>Latency</th></tr></thead>
-        <tbody>${logs.map((l) => `<tr>
-          <td class="meta">${new Date(l.timestamp).toLocaleTimeString()}</td>
-          <td class="${l.error ? "status-err" : "status-ok"}">${l.error ? "ERR" : l.status_code}</td>
-          <td><code>${esc(l.tool)}</code> <span class="meta">${esc(l.method)}</span></td>
-          <td class="meta">${l.latency_ms}ms</td>
-        </tr>`).join("")}</tbody></table>` : '<div class="empty">No calls logged yet.</div>';
+      await renderLogs(id, panel);
     } else {
       await renderCredentials(id, panel);
     }
@@ -375,6 +375,32 @@ function prettyJson(text) {
   try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
 }
 
+async function renderLogs(id, panel) {
+  const logs = await api("/servers/" + id + "/logs?limit=100");
+  if (!logs.length) { panel.innerHTML = '<div class="empty">No calls logged yet — run a tool from the Tools tab.</div>'; return; }
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span class="meta">${logs.length} recent calls · click a row for payloads</span>
+      <button id="logs-refresh" class="ghost">Refresh</button>
+    </div>
+    ${logs.map((l) => `<details class="tool">
+      <summary>
+        <span class="${l.error ? "status-err" : "status-ok"}">${l.error ? "ERR" : l.status_code}</span>
+        <code>${esc(l.tool)}</code>
+        <span class="meta">${esc(l.method)}</span>
+        <span class="meta tool-path">${new Date(l.timestamp).toLocaleTimeString()} · ${l.latency_ms}ms</span>
+      </summary>
+      <div class="tool-body">
+        ${l.error ? `<div class="status-err" style="margin-bottom:6px">${esc(l.error)}</div>` : ""}
+        <div class="meta" style="margin-bottom:4px">request args</div>
+        <pre class="response">${esc(prettyJson(l.request_body || "{}"))}</pre>
+        ${l.response_body ? `<div class="meta" style="margin:8px 0 4px">response body</div>
+        <pre class="response">${esc(prettyJson(l.response_body))}</pre>` : ""}
+      </div>
+    </details>`).join("")}`;
+  $("#logs-refresh").addEventListener("click", () => renderTab(id));
+}
+
 async function renderCredentials(id, panel) {
   const schemes = (currentDetail && currentDetail.securitySchemes) || [];
   if (!schemes.length) {
@@ -437,12 +463,14 @@ async function renderCredentials(id, panel) {
 }
 
 function valueBlock(s, i) {
+  const isSet = ((currentDetail && currentDetail.credentialsSet) || []).includes(s.name);
+  const badge = isSet ? ' <span class="status-ok">● set</span>' : "";
   return `<div style="display:flex; gap:8px; align-items:flex-end; margin-bottom:10px">
     <div style="flex:1">
-      <label>${esc(s.name)} <span class="meta">(${esc(s.type)} · ${esc(s.detail || "")})</span></label>
+      <label>${esc(s.name)} <span class="meta">(${esc(s.type)} · ${esc(s.detail || "")})</span>${badge}</label>
       <input type="password" id="cred-${i}" placeholder="${s.type === "http" && s.detail === "basic" ? "user:password" : "value"}" />
     </div>
-    <button data-set="${esc(s.name)}" data-i="${i}" class="primary">Set</button>
+    <button data-set="${esc(s.name)}" data-i="${i}" class="primary">${isSet ? "Replace" : "Set"}</button>
   </div>`;
 }
 

@@ -294,23 +294,6 @@ program
               "(set it to persist them encrypted across restarts)",
       );
 
-      // Rehydrate previously-created servers by re-ingesting their specs.
-      const { restored, failed } = await registry.load();
-      if (restored) console.error(`→ restored ${restored} server(s) from ${dbLocation}`);
-      for (const f of failed) {
-        console.error(`⚠ could not restore "${f.id}": ${f.error}`);
-      }
-
-      // Seed prebuilt anchor servers, if requested.
-      if (options.seed) {
-        const manifest = typeof options.seed === "string" ? options.seed : defaultManifestPath();
-        console.error(`→ seeding prebuilt servers from ${manifest}…`);
-        const seed = await seedRegistry(registry, manifest);
-        if (seed.created.length) console.error(`  created: ${seed.created.join(", ")}`);
-        if (seed.skipped.length) console.error(`  already present: ${seed.skipped.join(", ")}`);
-        for (const f of seed.failed) console.error(`  ⚠ ${f.name}: ${f.error}`);
-      }
-
       const port = Number(options.port);
       const publicBase = (options.publicUrl ?? process.env.MCPIFY_PUBLIC_URL ??
         `http://${options.host}:${port}`).replace(/\/+$/, "");
@@ -325,7 +308,6 @@ program
             callbackUrl: `${publicBase}/oauth/callback`,
           })
         : undefined;
-      if (oauth) await oauth.restoreAll();
       console.error(
         oauth
           ? "→ OAuth2 authorization-code flow enabled"
@@ -367,6 +349,25 @@ program
           `\n  dashboard at /   ·   hosted MCP at /servers/<id>/mcp (Bearer token)\n` +
           `Persisting servers + logs to ${dbLocation}. Press Ctrl+C to stop.`,
       );
+
+      // Rehydrate servers, restore OAuth tokens, and seed anchors in the
+      // background so the dashboard is up instantly — restoring a spec from a
+      // slow URL shouldn't block startup. Servers appear as they load (a
+      // request for one that isn't loaded yet is resolved on demand anyway).
+      void (async () => {
+        const { restored, failed } = await registry.load();
+        if (restored) console.error(`→ restored ${restored} server(s) from ${dbLocation}`);
+        for (const f of failed) console.error(`⚠ could not restore "${f.id}": ${f.error}`);
+        if (oauth) await oauth.restoreAll();
+
+        if (options.seed) {
+          const manifest = typeof options.seed === "string" ? options.seed : defaultManifestPath();
+          console.error(`→ seeding prebuilt servers from ${manifest}…`);
+          const seed = await seedRegistry(registry, manifest);
+          if (seed.created.length) console.error(`→ seeded: ${seed.created.join(", ")}`);
+          for (const f of seed.failed) console.error(`  ⚠ ${f.name}: ${f.error}`);
+        }
+      })().catch((err) => console.error(`⚠ startup restore failed: ${errMessage(err)}`));
     } catch (err) {
       fail(err);
     }
