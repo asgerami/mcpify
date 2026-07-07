@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from "fastify";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpServer } from "../runtime/server.js";
+import { executeTool } from "../runtime/proxy.js";
 import { formatDiff } from "../generator/diff.js";
 import { discoverSpec } from "../parser/discover.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
@@ -47,6 +48,17 @@ export function buildControlPlane(
     if (entry && oauth) await oauth.restoreServer(id);
     return entry;
   };
+
+  // On a 401, refresh any of the tool's OAuth schemes and signal a retry.
+  const oauthRefresher = (id: string) =>
+    oauth
+      ? async (schemes: string[]) => {
+          const results = await Promise.all(
+            schemes.map((s) => oauth.refresh(id, s).catch(() => false)),
+          );
+          return results.some(Boolean);
+        }
+      : undefined;
 
   // Gate the management API behind the admin token. Public routes (the dashboard
   // shell, health, the OAuth callback, and the token-gated MCP endpoints) are
@@ -124,6 +136,8 @@ export function buildControlPlane(
       mcpPath: `/servers/${entry.slug}/mcp`,
       mcpToken: entry.mcpToken,
       securitySchemes,
+      // Scheme names that currently have a credential value (never the values).
+      credentialsSet: Object.keys(entry.creds).filter((k) => entry.creds[k]),
     };
   });
 
@@ -136,10 +150,47 @@ export function buildControlPlane(
       method: t.method,
       path: t.pathTemplate,
       description: t.description.split("\n")[0],
-      params: t.params.map((p) => ({ name: p.name, in: p.location, required: p.required })),
+      params: t.params.map((p) => ({
+        name: p.name,
+        in: p.location,
+        required: p.required,
+        type: Array.isArray(p.schema.type) ? p.schema.type[0] : p.schema.type,
+        description: p.description,
+      })),
       hasBody: !!t.body,
       security: t.security,
     }));
+  });
+
+  // Invoke a tool from the dashboard's interactive tester: run it through the
+  // same proxy the MCP endpoint uses (auth injected, logged), return the result.
+  app.post("/servers/:id/tools/:tool/invoke", async (request, reply) => {
+    const id = idParam(request);
+    const entry = await resolveServer(id);
+    if (!entry) return notFound(reply);
+    const toolName = (request.params as { tool: string }).tool;
+    const tool = entry.generated.tools.find((t) => t.name === toolName);
+    if (!tool) return reply.code(404).send({ error: "tool not found" });
+
+    const args = (request.body ?? {}) as Record<string, unknown>;
+    try {
+      const result = await executeTool(tool, args, {
+        baseUrl: entry.generated.baseUrl,
+        schemes: entry.generated.securitySchemes,
+        creds: entry.creds,
+        onLog: (e) => registry.recordLog(id, e),
+        onUnauthorized: oauthRefresher(id),
+      });
+      return {
+        statusCode: result.statusCode,
+        ok: result.ok,
+        contentType: result.contentType,
+        body: result.body,
+      };
+    } catch (err) {
+      // Network/DNS failure reaching the upstream (not an HTTP error status).
+      return reply.code(502).send({ error: errMessage(err) });
+    }
   });
 
   app.get("/servers/:id/logs", async (request, reply) => {
@@ -287,15 +338,7 @@ export function buildControlPlane(
       const server = createMcpServer(entry.generated, {
         creds: entry.creds,
         onLog: (e) => registry.recordLog(id, e),
-        onUnauthorized: oauth
-          ? async (schemes) => {
-              // Refresh any of the tool's OAuth schemes; retry if one succeeds.
-              const results = await Promise.all(
-                schemes.map((s) => oauth.refresh(id, s).catch(() => false)),
-              );
-              return results.some(Boolean);
-            }
-          : undefined,
+        onUnauthorized: oauthRefresher(id),
       });
       await server.connect(transport);
     }

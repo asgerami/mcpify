@@ -86,6 +86,30 @@
   .status-ok { color: var(--ok); font-weight: 600; }
   .status-err { color: var(--err); font-weight: 600; }
   .empty { color: var(--muted); padding: 40px 14px; text-align: center; }
+  details.tool { border: 1px solid var(--border); border-radius: 9px; margin-bottom: 6px; background: var(--panel); }
+  details.tool summary {
+    cursor: pointer; padding: 9px 11px; display: flex; align-items: center; gap: 9px;
+    list-style: none; border-radius: 9px;
+  }
+  details.tool summary::-webkit-details-marker { display: none; }
+  details.tool[open] summary { border-bottom: 1px solid var(--border); }
+  details.tool summary:hover { background: var(--bg); }
+  .tool-path { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
+  .tool-body { padding: 12px; }
+  form.tool-form { display: flex; flex-direction: column; gap: 8px; }
+  .field { display: grid; gap: 3px; font-size: 12px; }
+  .field > span { color: var(--text); }
+  .field input, .field textarea {
+    padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px;
+    background: var(--bg); color: var(--text); font: inherit; font-size: 13px;
+  }
+  .field textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+  .tool-result { margin-top: 10px; }
+  pre.response {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px; margin: 0; overflow: auto; max-height: 320px; font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
   .toast {
     position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
     background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 999px;
@@ -238,15 +262,7 @@ async function renderTab(id) {
   panel.innerHTML = '<div class="empty">Loading…</div>';
   try {
     if (activeTab === "tools") {
-      const tools = await api("/servers/" + id + "/tools");
-      panel.innerHTML = tools.length ? `<table>
-        <thead><tr><th>Tool</th><th>Method</th><th>Path</th><th>Auth</th></tr></thead>
-        <tbody>${tools.map((t) => `<tr>
-          <td><code>${esc(t.name)}</code><div class="meta">${esc(t.description || "")}</div></td>
-          <td><span class="method">${esc(t.method)}</span></td>
-          <td><code>${esc(t.path)}</code></td>
-          <td>${t.security && t.security.length ? "🔒 " + esc(t.security.join(", ")) : "—"}</td>
-        </tr>`).join("")}</tbody></table>` : '<div class="empty">No tools.</div>';
+      await renderTools(id, panel);
     } else if (activeTab === "logs") {
       const logs = await api("/servers/" + id + "/logs?limit=100");
       panel.innerHTML = logs.length ? `<table>
@@ -261,6 +277,102 @@ async function renderTab(id) {
       await renderCredentials(id, panel);
     }
   } catch (e) { panel.innerHTML = '<div class="empty">' + esc(e.message) + "</div>"; }
+}
+
+async function renderTools(id, panel) {
+  const tools = await api("/servers/" + id + "/tools");
+  if (!tools.length) { panel.innerHTML = '<div class="empty">No tools.</div>'; return; }
+  panel.innerHTML = `
+    <input id="tool-search" placeholder="Filter ${tools.length} tools…"
+      style="width:100%;margin-bottom:10px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;font-size:13px" />
+    <div id="tool-list">${tools.map(toolCard).join("")}</div>`;
+
+  // Filter as you type.
+  $("#tool-search").addEventListener("input", (e) => {
+    const q = e.target.value.toLowerCase();
+    panel.querySelectorAll("details.tool").forEach((d) => {
+      const hay = (d.dataset.name + " " + d.dataset.path).toLowerCase();
+      d.style.display = hay.includes(q) ? "" : "none";
+    });
+  });
+
+  // Wire each tool's Run button.
+  panel.querySelectorAll("form.tool-form").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = form.dataset.name;
+      const out = form.parentElement.querySelector(".tool-result");
+      const btn = form.querySelector("button");
+      const args = {};
+      form.querySelectorAll("[data-param]").forEach((inp) => {
+        if (inp.value === "") return;
+        args[inp.dataset.param] = coerce(inp.value, inp.dataset.type);
+      });
+      const bodyEl = form.querySelector("[data-body]");
+      if (bodyEl && bodyEl.value.trim()) {
+        try { args.body = JSON.parse(bodyEl.value); }
+        catch { out.innerHTML = '<div class="status-err">Body is not valid JSON.</div>'; return; }
+      }
+      btn.disabled = true; btn.textContent = "Running…";
+      out.innerHTML = '<div class="meta">Calling…</div>';
+      try {
+        const res = await api("/servers/" + id + "/tools/" + encodeURIComponent(name) + "/invoke", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify(args),
+        });
+        out.innerHTML = `<div class="${res.ok ? "status-ok" : "status-err"}" style="margin-bottom:6px">HTTP ${res.statusCode}${res.ok ? "" : " (error)"}</div><pre class="response">${esc(prettyJson(res.body))}</pre>`;
+      } catch (err) {
+        out.innerHTML = '<div class="status-err">' + esc(err.message) + "</div>";
+      } finally {
+        btn.disabled = false; btn.textContent = "Run";
+      }
+    });
+  });
+}
+
+function toolCard(t) {
+  const authNote = t.security && t.security.length
+    ? `<span class="meta">🔒 needs ${esc(t.security.join(", "))} — set it in Credentials</span>` : "";
+  const inputs = t.params.map((p) => `
+    <label class="field">
+      <span>${esc(p.name)} <span class="meta">${esc(p.in)}${p.required ? " · required" : ""}${p.type ? " · " + esc(p.type) : ""}</span></span>
+      <input data-param="${esc(p.name)}" data-type="${esc(p.type || "string")}" placeholder="${p.required ? "required" : "optional"}" />
+    </label>`).join("");
+  const bodyField = t.hasBody ? `
+    <label class="field">
+      <span>body <span class="meta">JSON</span></span>
+      <textarea data-body rows="4" placeholder='{ }'></textarea>
+    </label>` : "";
+  return `<details class="tool" data-name="${esc(t.name)}" data-path="${esc(t.path)}">
+    <summary>
+      <span class="method">${esc(t.method)}</span>
+      <code>${esc(t.name)}</code>
+      <span class="meta tool-path">${esc(t.path)}</span>
+    </summary>
+    <div class="tool-body">
+      <div class="meta" style="margin:0 0 8px">${esc(t.description || "")}</div>
+      ${authNote}
+      <form class="tool-form" data-name="${esc(t.name)}">
+        ${inputs || '<div class="meta">No parameters.</div>'}
+        ${bodyField}
+        <button type="submit" class="primary" style="margin-top:8px;align-self:flex-start">Run</button>
+      </form>
+      <div class="tool-result"></div>
+    </div>
+  </details>`;
+}
+
+function coerce(value, type) {
+  if (type === "integer" || type === "number") {
+    const n = Number(value);
+    return Number.isNaN(n) ? value : n;
+  }
+  if (type === "boolean") return value === "true" || value === "1";
+  return value;
+}
+
+function prettyJson(text) {
+  try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
 }
 
 async function renderCredentials(id, panel) {
