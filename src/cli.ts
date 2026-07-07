@@ -1,6 +1,35 @@
 #!/usr/bin/env node
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { Command } from "commander";
+
+/**
+ * Load environment variables from .env.local then .env (in the working
+ * directory) before anything reads process.env — so `mcpify serve` picks up
+ * MCPIFY_SECRET_KEY / MCPIFY_ADMIN_TOKEN / DATABASE_URL without a launcher flag.
+ * Precedence: real shell env > .env.local > .env (nothing already set is
+ * overwritten). No dependency; a minimal KEY=value parser.
+ */
+function loadEnvFiles(): void {
+  const loaded: string[] = [];
+  for (const file of [".env.local", ".env"]) {
+    if (!existsSync(file)) continue;
+    for (const raw of readFileSync(file, "utf8").split("\n")) {
+      const line = raw.trim();
+      if (!line || line.startsWith("#")) continue;
+      const eq = line.indexOf("=");
+      if (eq === -1) continue;
+      const key = line.slice(0, eq).trim().replace(/^export\s+/, "");
+      if (key in process.env) continue; // shell env / earlier file wins
+      let val = line.slice(eq + 1).trim();
+      if (/^(".*"|'.*')$/.test(val)) val = val.slice(1, -1);
+      process.env[key] = val;
+    }
+    loaded.push(file);
+  }
+  if (loaded.length) console.error(`→ loaded env from ${loaded.join(", ")}`);
+}
+loadEnvFiles();
 import { ingest } from "./parser/openapi.js";
 import { discoverSpec } from "./parser/discover.js";
 import { enrichTools } from "./generator/enrich.js";

@@ -250,6 +250,12 @@ so lock it down before exposing it beyond localhost:
 - **Encryption key** — set `MCPIFY_SECRET_KEY` so credentials and OAuth tokens
   are encrypted at rest (and OAuth is enabled).
 
+The CLI auto-loads `.env.local` then `.env` from the working directory on
+startup, so `mcpify serve` picks these up without a launcher flag (real shell
+env still wins). Generate the secrets with `openssl rand -hex 32` /
+`openssl rand -hex 24` and keep the same values across restarts so stored
+secrets stay decryptable. `.env*.local` is gitignored.
+
 Bind `0.0.0.0`, terminate TLS at a reverse proxy (Caddy/nginx), and mount a
 volume for the SQLite file. `SIGTERM`/`SIGINT` shut down gracefully.
 
