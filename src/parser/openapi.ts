@@ -31,7 +31,7 @@ export async function ingest(
     );
   }
 
-  const baseUrl = resolveBaseUrl(api, opts.baseUrl);
+  const baseUrl = resolveBaseUrl(api, specSource, opts.baseUrl);
   const securitySchemes = mapSecuritySchemes(api);
   const tools = buildTools(api, securitySchemes);
 
@@ -94,7 +94,7 @@ async function tryLoadJson(specSource: string): Promise<unknown> {
   }
 }
 
-function resolveBaseUrl(api: OpenAPIDoc, override?: string): string {
+function resolveBaseUrl(api: OpenAPIDoc, specSource: string, override?: string): string {
   if (override) return stripTrailingSlash(override);
   const first = api.servers?.[0]?.url;
   if (!first) {
@@ -104,7 +104,21 @@ function resolveBaseUrl(api: OpenAPIDoc, override?: string): string {
     );
   }
   // Server URLs can be relative or contain templated variables; resolve defaults.
-  const url = applyServerVariables(first, api.servers![0].variables);
+  let url = applyServerVariables(first, api.servers![0].variables);
+
+  // Relative server URLs (e.g. "/api/v3") are common; resolve them against the
+  // spec's own URL so the upstream is absolute.
+  if (!/^https?:\/\//i.test(url)) {
+    if (/^https?:\/\//i.test(specSource)) {
+      url = new URL(url, specSource).toString();
+    } else {
+      throw new Error(
+        `The spec's server URL is relative ("${url}") and the spec was loaded ` +
+          `from a file, so the upstream host is unknown. Pass --base-url ` +
+          `https://api.example.com (or baseUrl) to set it.`,
+      );
+    }
+  }
   return stripTrailingSlash(url);
 }
 
