@@ -333,6 +333,52 @@ const server = createMcpServer(generated, {
 await serveStdio(server);
 ```
 
+## Deploy (Docker)
+
+MCPify ships a multi-stage `Dockerfile` and a `docker-compose.yml`. The image
+binds `0.0.0.0`, runs as a non-root user, persists the SQLite database to a
+`/data` volume, and has a `/health` check.
+
+```bash
+cp .env.example .env      # then fill in the two required secrets:
+#   MCPIFY_SECRET_KEY   — openssl rand -hex 32   (encrypts creds + OAuth tokens)
+#   MCPIFY_ADMIN_TOKEN  — openssl rand -hex 24   (gates the management API)
+#   MCPIFY_PUBLIC_URL   — your public https origin (for OAuth redirects)
+
+docker compose up -d
+# dashboard + API on :4000, data persisted in the `mcpify-data` volume
+```
+
+Compose **refuses to start** without `MCPIFY_SECRET_KEY` and `MCPIFY_ADMIN_TOKEN`,
+so you can't accidentally run it wide open. The default command enables a
+120 req/min-per-server rate limit; adjust in `docker-compose.yml`.
+
+Or run the image directly:
+
+```bash
+docker build -t mcpify .
+docker run -d -p 4000:4000 -v mcpify-data:/data \
+  -e MCPIFY_SECRET_KEY=$(openssl rand -hex 32) \
+  -e MCPIFY_ADMIN_TOKEN=$(openssl rand -hex 24) \
+  -e MCPIFY_PUBLIC_URL=https://mcp.yourdomain.com \
+  mcpify
+```
+
+### TLS
+
+Terminate TLS at a reverse proxy in front of the container. With
+[Caddy](https://caddyserver.com) it's two lines (automatic HTTPS):
+
+```caddyfile
+mcp.yourdomain.com {
+    reverse_proxy localhost:4000
+}
+```
+
+Set `MCPIFY_PUBLIC_URL=https://mcp.yourdomain.com` so OAuth `redirect_uri`s use
+the real origin. The SQLite volume is single-instance; horizontal scaling (a
+shared Postgres) is future work.
+
 ## Development
 
 ```bash
