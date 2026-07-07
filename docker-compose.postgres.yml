@@ -1,0 +1,40 @@
+# Multi-replica-capable deployment: MCPify + a shared Postgres.
+#   docker compose -f docker-compose.postgres.yml up -d
+# All replicas share server records, credentials, OAuth tokens, and usage logs
+# via Postgres, so state survives any single container and scales horizontally.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mcpify}
+      POSTGRES_DB: mcpify
+    volumes:
+      - mcpify-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mcpify"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mcpify:
+    build: .
+    image: mcpify:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    environment:
+      MCPIFY_SECRET_KEY: ${MCPIFY_SECRET_KEY:?set MCPIFY_SECRET_KEY (encrypts credentials + OAuth tokens)}
+      MCPIFY_ADMIN_TOKEN: ${MCPIFY_ADMIN_TOKEN:?set MCPIFY_ADMIN_TOKEN (gates the management API)}
+      MCPIFY_PUBLIC_URL: ${MCPIFY_PUBLIC_URL:-http://localhost:4000}
+      # All replicas point at the shared database.
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-mcpify}@db:5432/mcpify
+    # To run multiple replicas, remove the static `ports` mapping above, put a
+    # load balancer (Caddy/nginx) in front with session affinity, and scale:
+    #   docker compose -f docker-compose.postgres.yml up -d --scale mcpify=3
+
+volumes:
+  mcpify-pg:

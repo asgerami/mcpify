@@ -376,8 +376,29 @@ mcp.yourdomain.com {
 ```
 
 Set `MCPIFY_PUBLIC_URL=https://mcp.yourdomain.com` so OAuth `redirect_uri`s use
-the real origin. The SQLite volume is single-instance; horizontal scaling (a
-shared Postgres) is future work.
+the real origin.
+
+### Scaling with Postgres (multiple replicas)
+
+By default MCPify persists to a single SQLite file (one instance). To run
+**multiple replicas**, point them all at one Postgres via `DATABASE_URL` (or
+`--log-db postgres://…`) — server records, credentials, OAuth tokens, and usage
+logs are then shared, and each replica reads a server another created through
+the store on a cache miss.
+
+```bash
+export MCPIFY_SECRET_KEY=... MCPIFY_ADMIN_TOKEN=...
+docker compose -f docker-compose.postgres.yml up -d
+```
+
+The storage layer is an interface with SQLite and Postgres backends; `--log-db`
+and `DATABASE_URL` select by scheme (`postgres://` vs a file path). Caveats when
+running >1 replica: Streamable-HTTP MCP sessions are per-instance, so the load
+balancer needs **session affinity** (sticky by `mcp-session-id` or client IP);
+the OAuth authorization `state` is per-instance, so route `/oauth/callback` with
+affinity too; and the rate limit is per-instance (effective limit ≈ N ×
+configured). A credential change made on one replica reaches others when they
+next rebuild that server's entry.
 
 ## Development
 
@@ -411,8 +432,10 @@ src/
   runtime/server.ts     Assemble a live (reloadable) McpServer from a spec
   runtime/watch.ts      Poll a spec and fire on change (live sync)
   runtime/transport.ts  stdio + Streamable HTTP transports
-  controlplane/registry.ts  Registry of generated servers (+ rehydrate)
-  controlplane/store.ts     Durable records + creds + OAuth tokens (SQLite)
+  controlplane/registry.ts  Registry of generated servers (+ rehydrate/read-through)
+  controlplane/store.ts     ServerStore interface + SQLite backend + factory
+  controlplane/store-postgres.ts     Postgres ServerStore (multi-replica)
+  controlplane/logstore-postgres.ts  Postgres LogStore (multi-replica)
   controlplane/vault.ts     AES-256-GCM credential encryption
   controlplane/oauth.ts     OAuth2 authorization-code primitives (PKCE)
   controlplane/oauth-manager.ts  OAuth config/tokens + refresh + inject
