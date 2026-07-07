@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.github
+.mcpify
+test
+*.md
+!README.md
+.env
+.DS_Store
+Dockerfile
+docker-compose.yml

@@ -1,0 +1,18 @@
+services:
+  mcpify:
+    build: .
+    image: mcpify:latest
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      # Required — refuse to start without them (they secure the deployment).
+      MCPIFY_SECRET_KEY: ${MCPIFY_SECRET_KEY:?set MCPIFY_SECRET_KEY (encrypts credentials + OAuth tokens)}
+      MCPIFY_ADMIN_TOKEN: ${MCPIFY_ADMIN_TOKEN:?set MCPIFY_ADMIN_TOKEN (gates the management API)}
+      # Public https origin behind your TLS proxy — used for OAuth redirect URIs.
+      MCPIFY_PUBLIC_URL: ${MCPIFY_PUBLIC_URL:-http://localhost:4000}
+    volumes:
+      - mcpify-data:/data
+
+volumes:
+  mcpify-data:
