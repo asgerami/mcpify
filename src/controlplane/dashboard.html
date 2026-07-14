@@ -111,6 +111,17 @@
     padding: 10px; margin: 0; overflow: auto; max-height: 320px; font-size: 12px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
+  /* analytics */
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+  .tile { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--panel); }
+  .tile .num { font-size: 23px; font-weight: 600; letter-spacing: -.02em; }
+  .tile .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 3px; }
+  .barchart { display: flex; align-items: flex-end; gap: 2px; height: 100px; padding-top: 2px; }
+  .bar-wrap { flex: 1; display: flex; align-items: flex-end; height: 100%; min-width: 0; }
+  /* single-series bars: accent hue, rounded top ends anchored to the baseline */
+  .bar { width: 100%; background: var(--accent); border-radius: 3px 3px 0 0; transition: opacity .1s; }
+  .bar-wrap:hover .bar { opacity: .65; }
+  .axis-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; }
   .toast {
     position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
     background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 999px;
@@ -238,6 +249,7 @@ async function selectServer(id) {
     <div class="tabs">
       <button data-tab="tools" class="${activeTab === "tools" ? "active" : ""}">Tools</button>
       <button data-tab="logs" class="${activeTab === "logs" ? "active" : ""}">Logs</button>
+      <button data-tab="analytics" class="${activeTab === "analytics" ? "active" : ""}">Analytics</button>
       <button data-tab="creds" class="${activeTab === "creds" ? "active" : ""}">Credentials</button>
     </div>
     <div class="tabpanel" id="tabpanel"></div>`;
@@ -273,6 +285,8 @@ async function renderTab(id) {
       await renderTools(id, panel);
     } else if (activeTab === "logs") {
       await renderLogs(id, panel);
+    } else if (activeTab === "analytics") {
+      await renderAnalytics(id, panel);
     } else {
       await renderCredentials(id, panel);
     }
@@ -399,6 +413,44 @@ async function renderLogs(id, panel) {
       </div>
     </details>`).join("")}`;
   $("#logs-refresh").addEventListener("click", () => renderTab(id));
+}
+
+async function renderAnalytics(id, panel) {
+  const s = await api("/servers/" + id + "/stats");
+  if (!s.total) {
+    panel.innerHTML = '<div class="empty">No calls yet — run some tools (Tools tab) to see analytics.</div>';
+    return;
+  }
+  const errPct = (s.errorRate * 100).toFixed(1);
+  const errClass = s.errorRate === 0 ? "status-ok" : s.errorRate < 0.1 ? "" : "status-err";
+  const max = Math.max(...s.hourly.map((h) => h.count), 1);
+  const bars = s.hourly.map((h) => {
+    const pct = h.count ? Math.max(4, Math.round((h.count / max) * 100)) : 0;
+    const hr = new Date(h.t).getHours();
+    return `<div class="bar-wrap" title="${String(hr).padStart(2, "0")}:00 · ${h.count} call${h.count === 1 ? "" : "s"}">
+      <div class="bar" style="height:${pct}%"></div>
+    </div>`;
+  }).join("");
+
+  panel.innerHTML = `
+    <div class="tiles">
+      <div class="tile"><div class="num">${s.total.toLocaleString()}</div><div class="lbl">total calls</div></div>
+      <div class="tile"><div class="num ${errClass}">${errPct}%</div><div class="lbl">error rate</div></div>
+      <div class="tile"><div class="num">${s.p95}<span style="font-size:14px">ms</span></div><div class="lbl">p95 · p50 ${s.p50}ms</div></div>
+    </div>
+    <div class="meta" style="margin:0 0 4px">Calls per hour (last 24h) · peak ${max}</div>
+    <div class="barchart">${bars}</div>
+    <div class="axis-labels"><span>24h ago</span><span>now</span></div>
+    <div class="meta" style="margin:16px 0 4px">By tool</div>
+    <table>
+      <thead><tr><th>Tool</th><th>Calls</th><th>Errors</th><th>p95</th></tr></thead>
+      <tbody>${s.perTool.map((t) => `<tr>
+        <td><code>${esc(t.tool)}</code></td>
+        <td>${t.calls}</td>
+        <td class="${t.errors ? "status-err" : "meta"}">${t.errors}</td>
+        <td class="meta">${t.p95}ms</td>
+      </tr>`).join("")}</tbody>
+    </table>`;
 }
 
 async function renderCredentials(id, panel) {

@@ -178,10 +178,12 @@ exported for programmatic use.
 
 `mcpify serve` starts a Fastify REST API that manages **many** generated servers
 at once and hosts each as a live MCP endpoint at `/servers/:id/mcp` (Streamable
-HTTP). It also serves a **dashboard** at `/` — a single self-contained page (no
-build step, no external assets) to create servers, inspect their tools, browse
-usage logs, **set credentials per security scheme**, copy MCP URLs, regenerate,
-and delete:
+HTTP). It also serves a **dashboard** at `/` — a single self-contained page (no build
+step, no external assets) to create servers, **run their tools interactively**
+(fill params → Run → see the live response), browse usage logs with
+request/response payloads, view **per-server analytics** (call volume, error
+rate, p50/p95 latency, per-tool breakdown), set credentials per security scheme,
+copy a ready-to-paste MCP config, regenerate, and delete:
 
 ```bash
 mcpify serve --port 4000
@@ -210,7 +212,9 @@ curl -X POST localhost:4000/servers \
 | `GET /servers` | List servers |
 | `GET /servers/:id` | Server details |
 | `GET /servers/:id/tools` | Generated tools |
+| `POST /servers/:id/tools/:tool/invoke` | Run a tool (proxied, logged) — the dashboard tester |
 | `GET /servers/:id/logs` | Usage logs (`?tool=&status=&limit=`) |
+| `GET /servers/:id/stats` | Analytics: volume, error rate, latency, per-tool |
 | `POST /servers/:id/regenerate` | Re-ingest the spec and diff the tools |
 | `POST /servers/:id/credentials` | Set a credential (`{scheme, value}`) |
 | `DELETE /servers/:id` | Remove a server |

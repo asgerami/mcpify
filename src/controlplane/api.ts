@@ -205,6 +205,55 @@ export function buildControlPlane(
     return logs;
   });
 
+  // Aggregate the usage logs into analytics: totals, error rate, latency
+  // percentiles, per-tool breakdown, and a 24h hourly volume series.
+  app.get("/servers/:id/stats", async (request, reply) => {
+    if (!(await resolveServer(idParam(request)))) return notFound(reply);
+    const rows = (await registry.logs(idParam(request), { limit: 5000 })) ?? [];
+    const isErr = (r: (typeof rows)[number]) => !!r.error || (r.status_code ?? 0) >= 400;
+
+    const latencies = rows.map((r) => r.latency_ms).sort((a, b) => a - b);
+    const errors = rows.filter(isErr).length;
+
+    // Per-tool: call count, error count, p95 latency.
+    const byTool = new Map<string, number[]>();
+    const toolErrors = new Map<string, number>();
+    for (const r of rows) {
+      (byTool.get(r.tool) ?? byTool.set(r.tool, []).get(r.tool)!).push(r.latency_ms);
+      if (isErr(r)) toolErrors.set(r.tool, (toolErrors.get(r.tool) ?? 0) + 1);
+    }
+    const perTool = [...byTool.entries()]
+      .map(([tool, lat]) => ({
+        tool,
+        calls: lat.length,
+        errors: toolErrors.get(tool) ?? 0,
+        p95: percentile(lat.slice().sort((a, b) => a - b), 0.95),
+      }))
+      .sort((a, b) => b.calls - a.calls);
+
+    // 24 hourly buckets ending now (oldest first).
+    const now = Date.now();
+    const hourMs = 3_600_000;
+    const hourly = Array.from({ length: 24 }, (_, i) => ({
+      t: now - (23 - i) * hourMs,
+      count: 0,
+    }));
+    for (const r of rows) {
+      const idx = 23 - Math.floor((now - r.timestamp) / hourMs);
+      if (idx >= 0 && idx < 24) hourly[idx].count++;
+    }
+
+    return {
+      total: rows.length,
+      errors,
+      errorRate: rows.length ? errors / rows.length : 0,
+      p50: percentile(latencies, 0.5),
+      p95: percentile(latencies, 0.95),
+      perTool,
+      hourly,
+    };
+  });
+
   app.post("/servers/:id/regenerate", async (request, reply) => {
     try {
       if (!(await resolveServer(idParam(request)))) return notFound(reply);
@@ -376,6 +425,13 @@ class RateLimiter {
     rec.count++;
     return true;
   }
+}
+
+/** Nearest-rank percentile of an ascending-sorted array; 0 for empty. */
+function percentile(sortedAsc: number[], q: number): number {
+  if (sortedAsc.length === 0) return 0;
+  const idx = Math.min(sortedAsc.length - 1, Math.floor(q * (sortedAsc.length - 1)));
+  return sortedAsc[idx];
 }
 
 function idParam(request: FastifyRequest): string {

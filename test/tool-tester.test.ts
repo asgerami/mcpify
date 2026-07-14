@@ -4,6 +4,7 @@ import { createServer, type Server } from "node:http";
 import { AddressInfo } from "node:net";
 import { ServerRegistry } from "../src/controlplane/registry.js";
 import { buildControlPlane } from "../src/controlplane/api.js";
+import { SqliteLogStore } from "../src/runtime/logstore.js";
 
 /**
  * A local upstream that both serves its own OpenAPI spec (at /openapi.json) and
@@ -27,6 +28,7 @@ async function upstream(): Promise<{ base: string; close: () => Promise<void> }>
                 responses: {},
               },
             },
+            "/missing": { get: { operationId: "getMissing", responses: {} } },
           },
         }),
       );
@@ -60,6 +62,36 @@ test("the tool tester invokes a tool and returns the upstream response", async (
     const items = JSON.parse(body.body);
     assert.equal(items.length, 2);
     assert.equal(items[0].name, "widget");
+  } finally {
+    await app.close();
+    await up.close();
+  }
+});
+
+test("stats aggregate calls, errors, and per-tool breakdown", async () => {
+  const up = await upstream();
+  const app = buildControlPlane(new ServerRegistry({ logStore: SqliteLogStore.open(":memory:") }));
+  try {
+    const created = await app.inject({
+      method: "POST", url: "/servers", payload: { spec: `${up.base}/openapi.json` },
+    });
+    const slug = created.json().slug;
+
+    // Two successful calls + one that hits a 404 upstream.
+    await app.inject({ method: "POST", url: `/servers/${slug}/tools/listitems/invoke`, payload: {} });
+    await app.inject({ method: "POST", url: `/servers/${slug}/tools/listitems/invoke`, payload: {} });
+    await app.inject({ method: "POST", url: `/servers/${slug}/tools/getmissing/invoke`, payload: {} });
+
+    const stats = (await app.inject({ url: `/servers/${slug}/stats` })).json();
+    assert.equal(stats.total, 3);
+    assert.equal(stats.errors, 1); // the 404
+    assert.ok(Math.abs(stats.errorRate - 1 / 3) < 0.01);
+    assert.equal(stats.hourly.length, 24);
+    assert.equal(stats.hourly[23].count, 3); // all in the current hour bucket
+
+    const listItems = stats.perTool.find((t: { tool: string }) => t.tool === "listitems");
+    assert.equal(listItems.calls, 2);
+    assert.equal(listItems.errors, 0);
   } finally {
     await app.close();
     await up.close();
