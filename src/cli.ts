@@ -44,6 +44,13 @@ import { Vault } from "./controlplane/vault.js";
 import { OAuthManager } from "./controlplane/oauth-manager.js";
 import { seedRegistry, defaultManifestPath } from "./controlplane/seed.js";
 import { buildControlPlane } from "./controlplane/api.js";
+import {
+  buildServerEntry,
+  clientConfigPath,
+  clientLabel,
+  installServer,
+  type ClientName,
+} from "./clients.js";
 import type { RequestLog } from "./runtime/proxy.js";
 import {
   loadCredentialsFromEnv,
@@ -247,6 +254,46 @@ program
   });
 
 program
+  .command("install")
+  .description("Generate an MCP server and wire it into your agent client — one command.")
+  .argument("<api>", "Spec URL/file, an API base URL to auto-discover, or a catalog name")
+  .option("-c, --client <name>", "Agent client to configure: claude | cursor", "claude")
+  .option("--config <path>", "Write to a specific MCP config file instead")
+  .option("-n, --name <name>", "Name for the server in the client config")
+  .option("-b, --base-url <url>", "Upstream API base URL override")
+  .option("--print", "Print the config block instead of writing it")
+  .action(async (api: string, options) => {
+    try {
+      const spec = await resolveApiTarget(api);
+      console.error(`→ reading ${spec}…`);
+      const generated = await ingest(spec, { baseUrl: options.baseUrl });
+      const name = slug(options.name ?? generated.name);
+      const entry = buildServerEntry(spec, options.baseUrl);
+      console.error(`→ generated ${generated.tools.length} tools from ${generated.name}`);
+
+      if (options.print) {
+        console.log(JSON.stringify({ mcpServers: { [name]: entry } }, null, 2));
+        return;
+      }
+
+      const client = options.client as ClientName;
+      const path = options.config ?? clientConfigPath(client);
+      const result = installServer(path, name, entry);
+      const label = options.config ? path : clientLabel(client);
+
+      console.error(
+        `\n✓ ${result.replaced ? "Updated" : "Added"} "${name}" in ${label}` +
+          `\n  ${result.path}` +
+          (result.backup ? `\n  (backup: ${result.backup})` : "") +
+          `\n\nRestart ${options.config ? "your client" : clientLabel(client)} — ` +
+          `${generated.tools.length} tools from ${generated.name} are ready to use.`,
+      );
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+program
   .command("serve")
   .description("Start the control-plane API that hosts multiple MCP servers.")
   .option("-p, --port <number>", "Port to listen on", "4000")
@@ -379,6 +426,31 @@ program.parseAsync();
 
 function collect(value: string, previous: string[]): string[] {
   return previous.concat([value]);
+}
+
+/** URL-safe lowercase name for a config key. */
+function slug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "api";
+}
+
+/**
+ * Resolve what the user pointed `install`/`add` at: a catalog name, a bare API
+ * base URL (auto-discover its spec), or a spec URL/file used as-is.
+ */
+async function resolveApiTarget(api: string): Promise<string> {
+  // A bare base URL (no spec file extension) — go find the spec.
+  if (/^https?:\/\//i.test(api) && !/\.(json|ya?ml)(\?|#|$)/i.test(api)) {
+    console.error(`→ discovering spec under ${api}…`);
+    const found = await discoverSpec(api);
+    if (found) {
+      console.error(`→ found spec at ${found.specUrl}`);
+      return found.specUrl;
+    }
+    throw new Error(
+      `No OpenAPI spec found under ${api}. Pass the spec URL directly.`,
+    );
+  }
+  return api;
 }
 
 /**
