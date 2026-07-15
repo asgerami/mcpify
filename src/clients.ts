@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 
 /**
  * Agent-client integration: write a generated MCP server straight into the
- * config file of Claude Desktop / Cursor, so `mcpify install <api>` is the whole
+ * config file of Claude Desktop / Cursor, so `wrangl install <api>` is the whole
  * setup. All these clients share the same `mcpServers` config shape.
  */
 
@@ -31,7 +31,7 @@ export function clientConfigPath(client: ClientName, home = homedir()): string {
 }
 
 /**
- * How to re-invoke *this* CLI from a client config. Works whether MCPify is run
+ * How to re-invoke *this* CLI from a client config. Works whether Wrangl is run
  * from source (tsx) or installed/compiled (node dist/cli.js), so the config we
  * write actually launches on the user's machine.
  */

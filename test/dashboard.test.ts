@@ -9,7 +9,7 @@ test("GET / serves the dashboard HTML page", async () => {
     const res = await app.inject({ url: "/" });
     assert.equal(res.statusCode, 200);
     assert.match(res.headers["content-type"] ?? "", /text\/html/);
-    assert.match(res.body, /MCPify · Control Plane/);
+    assert.match(res.body, /Wrangl · Control Plane/);
     // It's self-contained (no external scripts/styles — CSP-safe).
     assert.doesNotMatch(res.body, /<script[^>]+src=/);
     assert.doesNotMatch(res.body, /<link[^>]+stylesheet/);

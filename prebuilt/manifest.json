@@ -1,5 +1,5 @@
 {
-  "$comment": "MCPify catalog — ready-made MCP servers for popular APIs. Every entry here was verified to ingest successfully. `mcpify catalog` lists them; `mcpify add <id>` wires one into your agent client; `mcpify serve --seed` hosts them all. Local specs work offline; URL specs are fetched on first use.",
+  "$comment": "Wrangl catalog — ready-made MCP servers for popular APIs. Every entry here was verified to ingest successfully. `wrangl catalog` lists them; `wrangl add <id>` wires one into your agent client; `wrangl serve --seed` hosts them all. Local specs work offline; URL specs are fetched on first use.",
   "servers": [
     {
       "id": "petstore",

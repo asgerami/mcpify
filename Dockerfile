@@ -32,6 +32,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["node", "dist/cli.js"]
-# Bind all interfaces and persist to the volume. Provide MCPIFY_SECRET_KEY,
-# MCPIFY_ADMIN_TOKEN, and MCPIFY_PUBLIC_URL via the environment.
-CMD ["serve", "--host", "0.0.0.0", "--port", "4000", "--log-db", "/data/mcpify.db", "--rate-limit", "120"]
+# Bind all interfaces and persist to the volume. Provide WRANGL_SECRET_KEY,
+# WRANGL_ADMIN_TOKEN, and WRANGL_PUBLIC_URL via the environment.
+CMD ["serve", "--host", "0.0.0.0", "--port", "4000", "--log-db", "/data/wrangl.db", "--rate-limit", "120"]

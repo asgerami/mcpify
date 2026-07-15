@@ -19,7 +19,7 @@ export interface HttpServeOptions {
 
 /**
  * Serve the MCP server over Streamable HTTP — the transport the hosted product
- * exposes at `mcp.mcpify.io/servers/{slug}`. Stateful sessions are keyed by the
+ * exposes at `mcp.wrangl.io/servers/{slug}`. Stateful sessions are keyed by the
  * `mcp-session-id` header and reused across requests.
  */
 export async function serveHttp(

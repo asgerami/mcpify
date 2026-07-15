@@ -17,11 +17,11 @@ export interface SeedEntry {
   spec: string;
   baseUrl?: string;
   note?: string;
-  /** Short id used by `mcpify add <id>`. */
+  /** Short id used by `wrangl add <id>`. */
   id?: string;
   /** Auth the upstream expects: none | bearer | basic | apiKey. */
   auth?: string;
-  /** Approximate tool count, for display in `mcpify catalog`. */
+  /** Approximate tool count, for display in `wrangl catalog`. */
   tools?: number;
 }
 
@@ -44,14 +44,14 @@ export function loadManifest(path: string = defaultManifestPath()): SeedEntry[] 
   return entries.filter((e) => e && typeof e.name === "string" && typeof e.spec === "string");
 }
 
-/** The bundled catalog of ready-made servers (`mcpify catalog` / `add`). */
+/** The bundled catalog of ready-made servers (`wrangl catalog` / `add`). */
 export function loadCatalog(path: string = defaultManifestPath()): SeedEntry[] {
   return loadManifest(path);
 }
 
 /**
  * Find a catalog entry by id (or name, case-insensitively) and resolve its spec
- * to an absolute location — so `mcpify add github` needs no URL.
+ * to an absolute location — so `wrangl add github` needs no URL.
  */
 export function findCatalogEntry(
   idOrName: string,

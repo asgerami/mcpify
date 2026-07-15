@@ -1,10 +1,10 @@
 {
-  "name": "mcpify",
+  "name": "wrangl",
   "version": "0.1.0",
   "description": "Turn any REST API into an agent-ready MCP server in minutes.",
   "type": "module",
   "bin": {
-    "mcpify": "./dist/cli.js"
+    "wrangl": "./dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,11 +14,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/asgerami/mcpify.git"
+    "url": "git+https://github.com/asgerami/wrangl.git"
   },
-  "homepage": "https://github.com/asgerami/mcpify#readme",
+  "homepage": "https://github.com/asgerami/wrangl#readme",
   "bugs": {
-    "url": "https://github.com/asgerami/mcpify/issues"
+    "url": "https://github.com/asgerami/wrangl/issues"
   },
   "author": "asgerami",
   "scripts": {

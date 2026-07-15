@@ -1,4 +1,4 @@
-# MCPify Guide
+# Wrangl Guide
 
 The complete reference. For the elevator pitch and quick start, see the
 [README](../README.md).
@@ -23,7 +23,7 @@ The complete reference. For the elevator pitch and quick start, see the
 
 ## How it works
 
-MCPify has three stages: ingest, generate, run.
+Wrangl has three stages: ingest, generate, run.
 
 - **Ingestion** (`src/parser`) loads an OpenAPI 3.x spec (URL or file, JSON or
   YAML) or a Postman collection (v2.x), normalizes both to canonical OpenAPI
@@ -46,17 +46,17 @@ Petstore) to keep ingestion and schema generation robust.
 ## CLI reference
 
 ```
-mcpify install <api> [options]     Discover, generate, and wire into your agent client
+wrangl install <api> [options]     Discover, generate, and wire into your agent client
   -c, --client <name>     Agent client to configure: claude | cursor (default claude)
   -n, --name <name>       Name for the server in the client config
   --config <path>         Write to a specific MCP config file instead
   -b, --base-url <url>    Upstream API base URL override
   --print                 Print the config block instead of writing it
 
-mcpify add <id>                    Install a ready-made server from the catalog
-mcpify catalog                     List the ready-made servers
+wrangl add <id>                    Install a ready-made server from the catalog
+wrangl catalog                     List the ready-made servers
 
-mcpify generate --spec <url|file> [options]
+wrangl generate --spec <url|file> [options]
   -s, --spec <source>     OpenAPI 3.x spec or Postman collection: a URL or file
   -d, --discover <url>    Auto-discover the spec by probing a base URL
   -b, --base-url <url>    Upstream base URL (overrides the spec's servers)
@@ -66,23 +66,23 @@ mcpify generate --spec <url|file> [options]
   -e, --enrich            Run the LLM semantic-enrichment pass (needs ANTHROPIC_API_KEY)
   -m, --model <id>        Claude model for enrichment (default claude-opus-4-8)
   --effort <level>        Enrichment reasoning effort: low | medium | high (default low)
-  -l, --log-db [path]     Persist tool-call logs to SQLite (default .mcpify/logs.db)
+  -l, --log-db [path]     Persist tool-call logs to SQLite (default .wrangl/logs.db)
   -w, --watch <seconds>   Re-ingest the spec every N seconds and hot-reload tools
 
-mcpify inspect --spec <url|file> [--json] [--enrich] [--discover <url>]
+wrangl inspect --spec <url|file> [--json] [--enrich] [--discover <url>]
   Parse a spec and print the generated tools without serving.
 
-mcpify serve [options]             Control-plane API + dashboard hosting many servers
+wrangl serve [options]             Control-plane API + dashboard hosting many servers
   -p, --port <number>       Port to listen on (default 4000)
   -H, --host <host>         Host to bind (default 127.0.0.1; use 0.0.0.0 in a container)
-  -l, --log-db [path]       Usage-log SQLite file, or a postgres:// URL (default .mcpify/logs.db)
+  -l, --log-db [path]       Usage-log SQLite file, or a postgres:// URL (default .wrangl/logs.db)
   -S, --seed [manifest]     Seed prebuilt server anchors (default bundled)
-  -u, --public-url <url>    Public base URL for OAuth callbacks (env MCPIFY_PUBLIC_URL)
-  -a, --admin-token <token> Require this Bearer token on the management API (env MCPIFY_ADMIN_TOKEN)
+  -u, --public-url <url>    Public base URL for OAuth callbacks (env WRANGL_PUBLIC_URL)
+  -a, --admin-token <token> Require this Bearer token on the management API (env WRANGL_ADMIN_TOKEN)
   -r, --rate-limit <perMin> Per-server req/min limit on the MCP endpoint (0 = off)
 
-mcpify logs [options]
-  -d, --db [path]         Log database path (default .mcpify/logs.db)
+wrangl logs [options]
+  -d, --db [path]         Log database path (default .wrangl/logs.db)
   --server <name>         Filter by server name
   --tool <name>           Filter by tool name
   --status <code>         Filter by HTTP status code
@@ -92,19 +92,19 @@ mcpify logs [options]
 ```
 
 The CLI auto-loads `.env.local` then `.env` from the working directory on
-startup, so `mcpify serve` picks up secrets without a launcher flag (a real
+startup, so `wrangl serve` picks up secrets without a launcher flag (a real
 shell environment variable still wins). `.env*.local` is gitignored.
 
 ## Connecting to your agent
 
-The easiest way is `mcpify install` or `mcpify add`, which writes the config for
+The easiest way is `wrangl install` or `wrangl add`, which writes the config for
 you (Claude Desktop or Cursor), preserving any existing servers and backing up
 the file first.
 
 ```bash
-mcpify install https://petstore3.swagger.io   # to Claude Desktop
-mcpify add stripe --client cursor             # to Cursor
-mcpify install <api> --print                  # just print the config block
+wrangl install https://petstore3.swagger.io   # to Claude Desktop
+wrangl add stripe --client cursor             # to Cursor
+wrangl install <api> --print                  # just print the config block
 ```
 
 Or add it by hand to your client's config (`claude_desktop_config.json`):
@@ -114,7 +114,7 @@ Or add it by hand to your client's config (`claude_desktop_config.json`):
   "mcpServers": {
     "petstore": {
       "command": "npx",
-      "args": ["mcpify", "generate", "--spec", "https://petstore3.swagger.io/api/v3/openapi.json"]
+      "args": ["wrangl", "generate", "--spec", "https://petstore3.swagger.io/api/v3/openapi.json"]
     }
   }
 }
@@ -131,15 +131,15 @@ or cookie), and OAuth2 (see [OAuth2](#oauth2)).
 Provide credentials by environment variable (preferred) or the `--auth` flag:
 
 ```bash
-# Per-scheme env var: MCPIFY_AUTH_<SCHEME_NAME> (scheme name upper-cased)
-export MCPIFY_AUTH_BEARERAUTH="my-token"
+# Per-scheme env var: WRANGL_AUTH_<SCHEME_NAME> (scheme name upper-cased)
+export WRANGL_AUTH_BEARERAUTH="my-token"
 
 # Or generic fallbacks
-export MCPIFY_BEARER_TOKEN="my-token"
-export MCPIFY_API_KEY="my-key"
+export WRANGL_BEARER_TOKEN="my-token"
+export WRANGL_API_KEY="my-key"
 
 # Or explicitly on the command line (scheme name must match the spec)
-mcpify generate --spec api.yaml --auth bearerAuth=my-token
+wrangl generate --spec api.yaml --auth bearerAuth=my-token
 ```
 
 For Basic auth, pass the value as `user:password`.
@@ -156,24 +156,24 @@ omits falls through to the deterministic original.
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-mcpify inspect  --spec examples/jsonplaceholder.yaml --enrich
-mcpify generate --spec examples/jsonplaceholder.yaml --enrich --model claude-sonnet-4-6
+wrangl inspect  --spec examples/jsonplaceholder.yaml --enrich
+wrangl generate --spec examples/jsonplaceholder.yaml --enrich --model claude-sonnet-4-6
 ```
 
 Defaults to `claude-opus-4-8`. Honors `ANTHROPIC_BASE_URL` for gateways.
 
 ## Spec auto-discovery
 
-Don't have the spec URL handy? Point at the API's base URL and MCPify probes the
+Don't have the spec URL handy? Point at the API's base URL and Wrangl probes the
 well-known locations (`/openapi.json`, `/swagger.json`, `/v3/api-docs`, versioned
 API roots, and more), and if none match it reads the docs page and follows the
 spec URL it references (which is how a Swagger UI page points at its own
 `openapi.json`).
 
 ```bash
-mcpify install  https://api.example.com          # install uses discovery automatically
-mcpify inspect  --discover https://api.example.com
-mcpify generate --discover https://api.example.com
+wrangl install  https://api.example.com          # install uses discovery automatically
+wrangl inspect  --discover https://api.example.com
+wrangl generate --discover https://api.example.com
 # The control plane accepts it too:  POST /servers  {"discover":"https://api.example.com"}
 ```
 
@@ -181,13 +181,13 @@ mcpify generate --discover https://api.example.com
 
 Pass `--log-db` to `generate` to persist every tool call to a SQLite database
 (request args plus a truncated response body, status, latency). Query or follow
-them with `mcpify logs`, which is handy for debugging what an agent actually
+them with `wrangl logs`, which is handy for debugging what an agent actually
 called.
 
 ```bash
-mcpify generate --spec examples/jsonplaceholder.yaml --log-db
-mcpify logs --tool get_post --status 200
-mcpify logs --tail
+wrangl generate --spec examples/jsonplaceholder.yaml --log-db
+wrangl logs --tool get_post --status 200
+wrangl logs --tail
 ```
 
 ```
@@ -200,14 +200,14 @@ This is the same log store the dashboard reads from.
 
 ## Live spec sync
 
-Pass `--watch <seconds>` to `generate` and MCPify re-ingests the spec on that
+Pass `--watch <seconds>` to `generate` and Wrangl re-ingests the spec on that
 interval. When the tools change, it diffs them and hot-reloads the running
 server, adding, removing, and updating tools in place and emitting a
 `tools/list_changed` notification, so connected agents pick up the new surface
 without reconnecting.
 
 ```bash
-mcpify generate --spec ./api.yaml --watch 30
+wrangl generate --spec ./api.yaml --watch 30
 ```
 
 ```
@@ -223,7 +223,7 @@ exported for programmatic use.
 
 ## Hosted control plane
 
-`mcpify serve` starts a Fastify REST API that manages many generated servers at
+`wrangl serve` starts a Fastify REST API that manages many generated servers at
 once and hosts each as a live MCP endpoint at `/servers/:id/mcp` (Streamable
 HTTP). It also serves a dashboard at `/`: a single self-contained page (no build
 step, no external assets) to create servers, run their tools interactively (fill
@@ -233,7 +233,7 @@ p50/p95 latency, per-tool breakdown), set credentials per security scheme, copy 
 ready-to-paste MCP config, regenerate, and delete.
 
 ```bash
-mcpify serve --port 4000
+wrangl serve --port 4000
 # open http://localhost:4000 for the dashboard
 
 # Create a server from a spec; agents connect to the returned mcpPath
@@ -243,7 +243,7 @@ curl -X POST localhost:4000/servers \
 # -> { "slug":"petstore", "toolCount":19, "mcpPath":"/servers/petstore/mcp", ... }
 ```
 
-`mcpify serve --seed` boots with a curated set of popular-API servers ready to
+`wrangl serve --seed` boots with a curated set of popular-API servers ready to
 use (from [prebuilt/manifest.json](../prebuilt/manifest.json)). Seeding is
 idempotent and skips anything already present, so an unreachable spec never
 blocks the rest. Restore, OAuth token restore, and seeding all run in the
@@ -263,7 +263,7 @@ background, so the dashboard is up instantly.
 | `DELETE /servers/:id` | Remove a server |
 | `ALL /servers/:id/mcp` | Hosted MCP endpoint; requires the server's Bearer token |
 
-Server records persist to SQLite. On restart, `mcpify serve` rehydrates each
+Server records persist to SQLite. On restart, `wrangl serve` rehydrates each
 server by re-ingesting its spec, so your servers survive a reboot.
 
 `ServerRegistry`, `ServerStore`, `Vault`, and `buildControlPlane` are exported
@@ -274,7 +274,7 @@ for embedding.
 For servers whose spec declares an `oauth2` authorization-code scheme, the
 control plane runs the full flow: configure the client, redirect the user to
 consent, exchange the code (with PKCE), and inject the access token into upstream
-calls. Tokens are encrypted at rest (requires `MCPIFY_SECRET_KEY`) and
+calls. Tokens are encrypted at rest (requires `WRANGL_SECRET_KEY`) and
 auto-refreshed on a 401. Drive it from the dashboard's Credentials tab, or the
 API:
 
@@ -291,7 +291,7 @@ POST /servers/:id/oauth/:scheme/refresh     force a token refresh
 The control plane stores and proxies credentials, so lock it down before
 exposing it beyond localhost.
 
-- **Admin token.** Set `MCPIFY_ADMIN_TOKEN` (or `--admin-token`) to require
+- **Admin token.** Set `WRANGL_ADMIN_TOKEN` (or `--admin-token`) to require
   `Authorization: Bearer <token>` on the whole management API. The dashboard
   shell, `/health`, the OAuth callback, and the hosted MCP endpoints stay public
   (the MCP endpoints have their own per-server token). `serve` warns loudly if
@@ -300,11 +300,11 @@ exposing it beyond localhost.
   (returned by `POST /servers` and shown in the dashboard). Agents must send it
   as `Authorization: Bearer <token>` to `/servers/:id/mcp`, so knowing the URL is
   not enough to use someone's stored credentials.
-- **Public URL.** Behind TLS or a proxy, set `MCPIFY_PUBLIC_URL` (or
+- **Public URL.** Behind TLS or a proxy, set `WRANGL_PUBLIC_URL` (or
   `--public-url`) so OAuth redirect URIs use your real `https://` origin.
 - **Rate limiting.** `--rate-limit <perMin>` caps requests per server on the MCP
   endpoint to bound cost and abuse.
-- **Encryption key.** Set `MCPIFY_SECRET_KEY` so credentials and OAuth tokens are
+- **Encryption key.** Set `WRANGL_SECRET_KEY` so credentials and OAuth tokens are
   encrypted at rest (AES-256-GCM) and OAuth is enabled. Generate one with
   `openssl rand -hex 32` and keep the same value across restarts so stored
   secrets stay decryptable. Without the key, credentials stay in memory only and
@@ -315,33 +315,33 @@ SQLite file. `SIGTERM` and `SIGINT` shut down gracefully.
 
 ## Deploy with Docker
 
-MCPify ships a multi-stage `Dockerfile` and a `docker-compose.yml`. The image
+Wrangl ships a multi-stage `Dockerfile` and a `docker-compose.yml`. The image
 binds `0.0.0.0`, runs as a non-root user, persists the SQLite database to a
 `/data` volume, and has a `/health` check.
 
 ```bash
 cp .env.example .env      # then fill in the required secrets:
-#   MCPIFY_SECRET_KEY   (openssl rand -hex 32)  encrypts creds + OAuth tokens
-#   MCPIFY_ADMIN_TOKEN  (openssl rand -hex 24)  gates the management API
-#   MCPIFY_PUBLIC_URL   your public https origin (for OAuth redirects)
+#   WRANGL_SECRET_KEY   (openssl rand -hex 32)  encrypts creds + OAuth tokens
+#   WRANGL_ADMIN_TOKEN  (openssl rand -hex 24)  gates the management API
+#   WRANGL_PUBLIC_URL   your public https origin (for OAuth redirects)
 
 docker compose up -d
-# dashboard + API on :4000, data persisted in the mcpify-data volume
+# dashboard + API on :4000, data persisted in the wrangl-data volume
 ```
 
-Compose refuses to start without `MCPIFY_SECRET_KEY` and `MCPIFY_ADMIN_TOKEN`, so
+Compose refuses to start without `WRANGL_SECRET_KEY` and `WRANGL_ADMIN_TOKEN`, so
 you cannot accidentally run it wide open. The default command enables a
 120 req/min-per-server rate limit; adjust it in `docker-compose.yml`.
 
 Or run the image directly:
 
 ```bash
-docker build -t mcpify .
-docker run -d -p 4000:4000 -v mcpify-data:/data \
-  -e MCPIFY_SECRET_KEY=$(openssl rand -hex 32) \
-  -e MCPIFY_ADMIN_TOKEN=$(openssl rand -hex 24) \
-  -e MCPIFY_PUBLIC_URL=https://mcp.yourdomain.com \
-  mcpify
+docker build -t wrangl .
+docker run -d -p 4000:4000 -v wrangl-data:/data \
+  -e WRANGL_SECRET_KEY=$(openssl rand -hex 32) \
+  -e WRANGL_ADMIN_TOKEN=$(openssl rand -hex 24) \
+  -e WRANGL_PUBLIC_URL=https://mcp.yourdomain.com \
+  wrangl
 ```
 
 Terminate TLS at a reverse proxy in front of the container. With
@@ -353,19 +353,19 @@ mcp.yourdomain.com {
 }
 ```
 
-Set `MCPIFY_PUBLIC_URL=https://mcp.yourdomain.com` so OAuth redirect URIs use the
+Set `WRANGL_PUBLIC_URL=https://mcp.yourdomain.com` so OAuth redirect URIs use the
 real origin.
 
 ## Scaling with Postgres
 
-By default MCPify persists to a single SQLite file (one instance). To run
+By default Wrangl persists to a single SQLite file (one instance). To run
 multiple replicas, point them all at one Postgres via `DATABASE_URL` (or
 `--log-db postgres://...`). Server records, credentials, OAuth tokens, and usage
 logs are then shared, and each replica reads a server another created through the
 store on a cache miss.
 
 ```bash
-export MCPIFY_SECRET_KEY=... MCPIFY_ADMIN_TOKEN=...
+export WRANGL_SECRET_KEY=... WRANGL_ADMIN_TOKEN=...
 docker compose -f docker-compose.postgres.yml up -d
 ```
 
@@ -383,7 +383,7 @@ entry.
 ## Library usage
 
 ```ts
-import { ingest, createMcpServer, serveStdio } from "mcpify";
+import { ingest, createMcpServer, serveStdio } from "wrangl";
 
 const generated = await ingest("https://api.example.com/openapi.json", {
   baseUrl: "https://api.example.com",

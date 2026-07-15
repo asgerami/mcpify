@@ -11,7 +11,7 @@ import { toolInputShape, toolOutputShape } from "../src/generator/schema.js";
  * decoupled from the assertions: we download the spec to a temp file (with an
  * explicit timeout, skipping if the network is slow/unavailable), then ingest
  * the local copy — so the test exercises ingestion + schema generation
- * deterministically rather than the network. Skipped under MCPIFY_SKIP_NETWORK.
+ * deterministically rather than the network. Skipped under WRANGL_SKIP_NETWORK.
  */
 
 const SPECS: Array<{
@@ -46,14 +46,14 @@ const SPECS: Array<{
   },
 ];
 
-const skip = process.env.MCPIFY_SKIP_NETWORK === "1";
+const skip = process.env.WRANGL_SKIP_NETWORK === "1";
 
 async function download(url: string, ext: string): Promise<string | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) return null;
     const text = await res.text();
-    const dir = await mkdtemp(join(tmpdir(), "mcpify-spec-"));
+    const dir = await mkdtemp(join(tmpdir(), "wrangl-spec-"));
     const file = join(dir, `spec.${ext}`);
     await writeFile(file, text);
     return file;

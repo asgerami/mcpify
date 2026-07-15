@@ -57,7 +57,7 @@ test("input shape exposes params as zod properties", async () => {
 // Live network test — proxies a real call to the public JSONPlaceholder API.
 test(
   "executeTool proxies a GET with a path param to the upstream API",
-  { skip: process.env.MCPIFY_SKIP_NETWORK === "1" },
+  { skip: process.env.WRANGL_SKIP_NETWORK === "1" },
   async () => {
     const gen = await ingest(SPEC);
     const getPost = tool(gen.tools, "getpost");
@@ -76,13 +76,13 @@ test(
 
 test(
   "executeTool proxies a POST with a JSON body",
-  { skip: process.env.MCPIFY_SKIP_NETWORK === "1" },
+  { skip: process.env.WRANGL_SKIP_NETWORK === "1" },
   async () => {
     const gen = await ingest(SPEC);
     const createPost = tool(gen.tools, "createpost");
     const result = await executeTool(
       createPost,
-      { body: { title: "hi", body: "from mcpify", userId: 7 } },
+      { body: { title: "hi", body: "from wrangl", userId: 7 } },
       { baseUrl: gen.baseUrl, schemes: gen.securitySchemes, creds: {} },
     );
     assert.equal(result.statusCode, 201);

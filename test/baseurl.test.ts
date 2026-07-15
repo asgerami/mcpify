@@ -33,7 +33,7 @@ test("a relative server URL is resolved against the spec's URL", async () => {
 });
 
 test("a relative server URL from a file needs an explicit base URL", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "mcpify-rel-"));
+  const dir = await mkdtemp(join(tmpdir(), "wrangl-rel-"));
   const file = join(dir, "spec.json");
   await writeFile(file, JSON.stringify(RELATIVE_SPEC));
 

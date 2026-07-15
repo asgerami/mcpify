@@ -13,7 +13,7 @@ const SPEC = join(root, "examples", "jsonplaceholder.yaml");
 // exactly like Claude Desktop would.
 test(
   "MCP client can list and call generated tools over stdio",
-  { skip: process.env.MCPIFY_SKIP_NETWORK === "1" },
+  { skip: process.env.WRANGL_SKIP_NETWORK === "1" },
   async () => {
     const transport = new StdioClientTransport({
       command: "npx",

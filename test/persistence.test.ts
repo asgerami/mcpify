@@ -32,7 +32,7 @@ test("ServerStore upserts, lists, and deletes records", async () => {
 });
 
 test("a server created with a store survives a fresh registry (rehydrate)", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "mcpify-persist-"));
+  const dir = await mkdtemp(join(tmpdir(), "wrangl-persist-"));
   const dbPath = join(dir, "cp.db");
 
   // First registry: create a server, then close the store.

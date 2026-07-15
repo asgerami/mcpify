@@ -16,7 +16,7 @@ import type { ToolDef } from "../src/types.js";
 
 /** A spec with one oauth2 scheme and one secured operation. */
 async function oauthSpec(tokenUrl: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "mcpify-oauth-"));
+  const dir = await mkdtemp(join(tmpdir(), "wrangl-oauth-"));
   const file = join(dir, "spec.json");
   await writeFile(
     file,

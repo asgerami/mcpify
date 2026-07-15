@@ -9,13 +9,13 @@ import { ServerRegistry } from "../src/controlplane/registry.js";
 import { Vault } from "../src/controlplane/vault.js";
 
 /**
- * Postgres backend integration tests. Skipped unless MCPIFY_PG_URL points at a
+ * Postgres backend integration tests. Skipped unless WRANGL_PG_URL points at a
  * reachable database (e.g. a local `postgres:16` container). Verifies the
  * Postgres stores implement the same contract as SQLite and that two registries
  * sharing one database behave like two replicas (read-through resolve).
  */
 
-const PG = process.env.MCPIFY_PG_URL;
+const PG = process.env.WRANGL_PG_URL;
 const skip = !PG;
 const here = dirname(fileURLToPath(import.meta.url));
 const SPEC = join(here, "..", "examples", "jsonplaceholder.yaml");
@@ -26,7 +26,7 @@ const ns = () => "t" + randomBytes(4).toString("hex");
 test("isPostgresUrl detects connection strings", () => {
   assert.equal(isPostgresUrl("postgres://u:p@h/db"), true);
   assert.equal(isPostgresUrl("postgresql://h/db"), true);
-  assert.equal(isPostgresUrl("/data/mcpify.db"), false);
+  assert.equal(isPostgresUrl("/data/wrangl.db"), false);
   assert.equal(isPostgresUrl(":memory:"), false);
 });
 

@@ -60,7 +60,7 @@ export function buildAuthInjection(
 
 /**
  * Load credentials for each scheme from the environment. Convention:
- *   MCPIFY_AUTH_<SCHEME_NAME>   (scheme name upper-cased, non-alnum → _)
+ *   WRANGL_AUTH_<SCHEME_NAME>   (scheme name upper-cased, non-alnum → _)
  * Falls back to common generic vars so simple specs "just work".
  */
 export function loadCredentialsFromEnv(
@@ -69,20 +69,20 @@ export function loadCredentialsFromEnv(
 ): CredentialStore {
   const creds: CredentialStore = {};
   for (const [name, scheme] of Object.entries(schemes)) {
-    const specific = env[`MCPIFY_AUTH_${envKey(name)}`];
+    const specific = env[`WRANGL_AUTH_${envKey(name)}`];
     if (specific) {
       creds[name] = specific;
       continue;
     }
     // Generic fallbacks by scheme type.
     if (scheme.type === "http" && scheme.scheme === "bearer") {
-      const v = env.MCPIFY_BEARER_TOKEN ?? env.MCPIFY_TOKEN;
+      const v = env.WRANGL_BEARER_TOKEN ?? env.WRANGL_TOKEN;
       if (v) creds[name] = v;
     } else if (scheme.type === "apiKey") {
-      const v = env.MCPIFY_API_KEY;
+      const v = env.WRANGL_API_KEY;
       if (v) creds[name] = v;
     } else if (scheme.type === "http" && scheme.scheme === "basic") {
-      const v = env.MCPIFY_BASIC_AUTH;
+      const v = env.WRANGL_BASIC_AUTH;
       if (v) creds[name] = v;
     }
   }

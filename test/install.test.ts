@@ -13,7 +13,7 @@ import {
 import { extractSpecUrls } from "../src/parser/discover.js";
 
 async function dir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "mcpify-install-"));
+  return mkdtemp(join(tmpdir(), "wrangl-install-"));
 }
 
 test("installServer creates the config file when none exists", async () => {

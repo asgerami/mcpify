@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: JSONPlaceholder
   version: "1.0.0"
-  description: A free fake REST API for testing — great for trying out MCPify end-to-end.
+  description: A free fake REST API for testing — great for trying out Wrangl end-to-end.
 servers:
   - url: https://jsonplaceholder.typicode.com
 paths:

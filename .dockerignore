@@ -2,7 +2,7 @@ node_modules
 dist
 .git
 .github
-.mcpify
+.wrangl
 test
 *.md
 !README.md

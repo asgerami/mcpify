@@ -39,7 +39,7 @@ export class Vault {
   }
 
   static fromEnv(env: NodeJS.ProcessEnv = process.env): Vault | undefined {
-    return Vault.fromSecret(env.MCPIFY_SECRET_KEY);
+    return Vault.fromSecret(env.WRANGL_SECRET_KEY);
   }
 
   /** Encrypt a plaintext value into a self-describing envelope string. */
@@ -77,7 +77,7 @@ function deriveKey(secret: string): Buffer {
   }
   // Treat as a passphrase. Fixed salt keeps the derived key stable across
   // restarts (so envelopes remain decryptable); the passphrase is the secret.
-  return scryptSync(secret, "mcpify.vault.v1", 32);
+  return scryptSync(secret, "wrangl.vault.v1", 32);
 }
 
 function splitOnce(value: string, sep: string): [string, string] {

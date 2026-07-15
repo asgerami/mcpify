@@ -20,7 +20,7 @@ test("the bundled manifest parses and lists anchors", () => {
 
 /** Write a manifest into a temp dir with a local spec beside it. */
 async function tempManifest(entries: unknown[]): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "mcpify-seed-"));
+  const dir = await mkdtemp(join(tmpdir(), "wrangl-seed-"));
   await copyFile(SPEC, join(dir, "local.yaml"));
   const path = join(dir, "manifest.json");
   await writeFile(path, JSON.stringify({ servers: entries }));

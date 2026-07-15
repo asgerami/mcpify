@@ -5,8 +5,8 @@ import { Command } from "commander";
 
 /**
  * Load environment variables from .env.local then .env (in the working
- * directory) before anything reads process.env — so `mcpify serve` picks up
- * MCPIFY_SECRET_KEY / MCPIFY_ADMIN_TOKEN / DATABASE_URL without a launcher flag.
+ * directory) before anything reads process.env — so `wrangl serve` picks up
+ * WRANGL_SECRET_KEY / WRANGL_ADMIN_TOKEN / DATABASE_URL without a launcher flag.
  * Precedence: real shell env > .env.local > .env (nothing already set is
  * overwritten). No dependency; a minimal KEY=value parser.
  */
@@ -65,12 +65,12 @@ import {
 import type { GeneratedServer } from "./types.js";
 
 /** Default location for the persistent usage-log database. */
-const DEFAULT_LOG_DB = join(process.cwd(), ".mcpify", "logs.db");
+const DEFAULT_LOG_DB = join(process.cwd(), ".wrangl", "logs.db");
 
 const program = new Command();
 
 program
-  .name("mcpify")
+  .name("wrangl")
   .description("Turn any REST API into an agent-ready MCP server in minutes.")
   .version("0.1.0");
 
@@ -282,12 +282,12 @@ installOptions(
 installOptions(
   program
     .command("add")
-    .description("Add a ready-made server from the catalog (see `mcpify catalog`).")
+    .description("Add a ready-made server from the catalog (see `wrangl catalog`).")
     .argument("<id>", "Catalog id, e.g. github | stripe | petstore"),
 ).action(async (id: string, options) => {
   try {
     if (!findCatalogEntry(id)) {
-      throw new Error(`Unknown catalog id "${id}". Run \`mcpify catalog\` to see them.`);
+      throw new Error(`Unknown catalog id "${id}". Run \`wrangl catalog\` to see them.`);
     }
     await runInstall(id, { ...options, name: options.name ?? id });
   } catch (err) {
@@ -297,18 +297,18 @@ installOptions(
 
 program
   .command("catalog")
-  .description("List the ready-made servers you can `mcpify add`.")
+  .description("List the ready-made servers you can `wrangl add`.")
   .action(() => {
     try {
       const entries = loadCatalog();
-      console.log("\nReady-made MCP servers — `mcpify add <id>`\n");
+      console.log("\nReady-made MCP servers — `wrangl add <id>`\n");
       for (const e of entries) {
         const id = (e.id ?? slug(e.name)).padEnd(16);
         const tools = e.tools ? `${e.tools} tools`.padEnd(11) : "".padEnd(11);
         const auth = (e.auth === "none" ? "no auth" : `auth: ${e.auth ?? "?"}`).padEnd(14);
         console.log(`  ${id}${tools}${auth}${e.note ?? ""}`);
       }
-      console.log("\ne.g.  mcpify add petstore    (no key needed — try this one)\n");
+      console.log("\ne.g.  wrangl add petstore    (no key needed — try this one)\n");
     } catch (err) {
       fail(err);
     }
@@ -329,11 +329,11 @@ program
   )
   .option(
     "-u, --public-url <url>",
-    "Public base URL for OAuth callbacks (env MCPIFY_PUBLIC_URL)",
+    "Public base URL for OAuth callbacks (env WRANGL_PUBLIC_URL)",
   )
   .option(
     "-a, --admin-token <token>",
-    "Require this Bearer token on the management API (env MCPIFY_ADMIN_TOKEN)",
+    "Require this Bearer token on the management API (env WRANGL_ADMIN_TOKEN)",
   )
   .option(
     "-r, --rate-limit <perMin>",
@@ -357,15 +357,15 @@ program
       });
       console.error(
         vault
-          ? "→ credential encryption enabled (MCPIFY_SECRET_KEY)"
-          : "⚠ MCPIFY_SECRET_KEY not set — credentials stay in memory only " +
+          ? "→ credential encryption enabled (WRANGL_SECRET_KEY)"
+          : "⚠ WRANGL_SECRET_KEY not set — credentials stay in memory only " +
               "(set it to persist them encrypted across restarts)",
       );
 
       const port = Number(options.port);
-      const publicBase = (options.publicUrl ?? process.env.MCPIFY_PUBLIC_URL ??
+      const publicBase = (options.publicUrl ?? process.env.WRANGL_PUBLIC_URL ??
         `http://${options.host}:${port}`).replace(/\/+$/, "");
-      const adminToken = options.adminToken ?? process.env.MCPIFY_ADMIN_TOKEN;
+      const adminToken = options.adminToken ?? process.env.WRANGL_ADMIN_TOKEN;
 
       // OAuth needs a vault to encrypt tokens; enabled only when the key is set.
       const oauth = vault
@@ -379,7 +379,7 @@ program
       console.error(
         oauth
           ? "→ OAuth2 authorization-code flow enabled"
-          : "⚠ OAuth2 disabled (needs MCPIFY_SECRET_KEY)",
+          : "⚠ OAuth2 disabled (needs WRANGL_SECRET_KEY)",
       );
 
       // Warn loudly if the management API is exposed without an admin token.
@@ -388,7 +388,7 @@ program
       else if (!localOnly) {
         console.error(
           "⚠ management API is UNAUTHENTICATED and bound to a non-local host. " +
-            "Set --admin-token / MCPIFY_ADMIN_TOKEN before exposing it.",
+            "Set --admin-token / WRANGL_ADMIN_TOKEN before exposing it.",
         );
       }
       if (options.rateLimit > 0) {
@@ -412,7 +412,7 @@ program
 
       await app.listen({ port, host: options.host });
       console.error(
-        `\nMCPify control plane on http://${options.host}:${port}` +
+        `\nWrangl control plane on http://${options.host}:${port}` +
           (publicBase !== `http://${options.host}:${port}` ? ` (public: ${publicBase})` : "") +
           `\n  dashboard at /   ·   hosted MCP at /servers/<id>/mcp (Bearer token)\n` +
           `Persisting servers + logs to ${dbLocation}. Press Ctrl+C to stop.`,
@@ -486,7 +486,7 @@ async function runInstall(
   const schemes = Object.keys(generated.securitySchemes);
   const authHint = schemes.length
     ? `\n\nThis API needs auth (${schemes.join(", ")}). Set it with an env var, e.g.` +
-      `\n  export MCPIFY_BEARER_TOKEN=...    # or MCPIFY_API_KEY / MCPIFY_AUTH_<SCHEME>`
+      `\n  export WRANGL_BEARER_TOKEN=...    # or WRANGL_API_KEY / WRANGL_AUTH_<SCHEME>`
     : "";
 
   console.error(
@@ -639,7 +639,7 @@ function warnMissingCreds(
   if (needed.size > 0) {
     console.error(
       `⚠ no credential provided for: ${[...needed].join(", ")}. ` +
-        `Set MCPIFY_AUTH_<SCHEME> or pass --auth <scheme>=<value>. ` +
+        `Set WRANGL_AUTH_<SCHEME> or pass --auth <scheme>=<value>. ` +
         `Authenticated calls will likely return 401.`,
     );
   }

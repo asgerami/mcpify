@@ -1,5 +1,5 @@
 /**
- * MCPify — turn any REST API into an agent-ready MCP server.
+ * Wrangl — turn any REST API into an agent-ready MCP server.
  *
  * Public programmatic API. The pipeline is:
  *   ingest(spec) → GeneratedServer → createMcpServer() → serve over a transport

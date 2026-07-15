@@ -25,4 +25,4 @@ jobs:
       # the local-HTTP and in-memory tests still run.
       - run: npm test
         env:
-          MCPIFY_SKIP_NETWORK: "1"
+          WRANGL_SKIP_NETWORK: "1"

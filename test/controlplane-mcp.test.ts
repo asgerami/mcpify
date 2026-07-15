@@ -11,7 +11,7 @@ import { SqliteLogStore } from "../src/runtime/logstore.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SPEC = join(here, "..", "examples", "jsonplaceholder.yaml");
-const skip = process.env.MCPIFY_SKIP_NETWORK === "1";
+const skip = process.env.WRANGL_SKIP_NETWORK === "1";
 
 test(
   "hosted MCP endpoint serves tools and proxies a real call",

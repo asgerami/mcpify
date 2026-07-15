@@ -20,7 +20,7 @@ function spec(paths: string[]): string {
 }
 
 test("watchSpec fires onChange when the spec gains a path", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "mcpify-watch-"));
+  const dir = await mkdtemp(join(tmpdir(), "wrangl-watch-"));
   const file = join(dir, "api.json");
   await writeFile(file, spec(["/a"]));
 

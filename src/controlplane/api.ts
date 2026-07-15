@@ -445,14 +445,14 @@ function schemeParam(request: FastifyRequest): string {
 function oauthDisabled(reply: FastifyReply) {
   return reply
     .code(501)
-    .send({ error: "OAuth is disabled. Start the control plane with MCPIFY_SECRET_KEY set." });
+    .send({ error: "OAuth is disabled. Start the control plane with WRANGL_SECRET_KEY set." });
 }
 
 /** Minimal HTML page shown to the user after the OAuth redirect. */
 function callbackPage(message: string): string {
-  return `<!doctype html><meta charset="utf-8"><title>MCPify OAuth</title>
+  return `<!doctype html><meta charset="utf-8"><title>Wrangl OAuth</title>
 <body style="font:15px system-ui;margin:15% auto;max-width:30rem;text-align:center;color:#1d1d1f">
-<h2 style="font-weight:600">MCPify</h2><p>${message.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!))}</p></body>`;
+<h2 style="font-weight:600">Wrangl</h2><p>${message.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!))}</p></body>`;
 }
 
 function notFound(reply: FastifyReply) {
