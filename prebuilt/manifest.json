@@ -1,25 +1,53 @@
 {
-  "$comment": "Prebuilt server anchors — popular APIs ready to host. Local specs work offline; URL specs are fetched on first seed, then persisted. Failures are reported and skipped, so one unreachable spec doesn't block the rest.",
+  "$comment": "MCPify catalog — ready-made MCP servers for popular APIs. Every entry here was verified to ingest successfully. `mcpify catalog` lists them; `mcpify add <id>` wires one into your agent client; `mcpify serve --seed` hosts them all. Local specs work offline; URL specs are fetched on first use.",
   "servers": [
     {
-      "name": "JSONPlaceholder",
-      "spec": "./jsonplaceholder.yaml",
-      "note": "Free fake REST API — works offline, no auth. Great first demo."
-    },
-    {
+      "id": "petstore",
       "name": "Swagger Petstore",
       "spec": "https://petstore3.swagger.io/api/v3/openapi.json",
-      "note": "The canonical OpenAPI example."
+      "auth": "none",
+      "tools": 19,
+      "note": "The classic OpenAPI demo API — live, no key needed. Best first try."
     },
     {
-      "name": "Stripe",
-      "spec": "https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json",
-      "note": "Payments API (large spec)."
+      "id": "jsonplaceholder",
+      "name": "JSONPlaceholder",
+      "spec": "./jsonplaceholder.yaml",
+      "auth": "none",
+      "tools": 4,
+      "note": "Free fake REST API. Bundled — works offline."
     },
     {
+      "id": "github",
       "name": "GitHub",
       "spec": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
-      "note": "GitHub REST API (large spec)."
+      "auth": "bearer",
+      "tools": 1204,
+      "note": "Full GitHub REST API. Needs a personal access token."
+    },
+    {
+      "id": "stripe",
+      "name": "Stripe",
+      "spec": "https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json",
+      "auth": "bearer",
+      "tools": 587,
+      "note": "Payments. Use a test-mode secret key."
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "spec": "https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml",
+      "auth": "bearer",
+      "tools": 242,
+      "note": "OpenAI platform API. Needs an API key."
+    },
+    {
+      "id": "twilio",
+      "name": "Twilio",
+      "spec": "https://raw.githubusercontent.com/twilio/twilio-oai/main/spec/json/twilio_api_v2010.json",
+      "auth": "basic",
+      "tools": 197,
+      "note": "SMS/voice. Basic auth: accountSid:authToken."
     }
   ]
 }

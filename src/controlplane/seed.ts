@@ -17,6 +17,12 @@ export interface SeedEntry {
   spec: string;
   baseUrl?: string;
   note?: string;
+  /** Short id used by `mcpify add <id>`. */
+  id?: string;
+  /** Auth the upstream expects: none | bearer | basic | apiKey. */
+  auth?: string;
+  /** Approximate tool count, for display in `mcpify catalog`. */
+  tools?: number;
 }
 
 export interface SeedResult {
@@ -36,6 +42,30 @@ export function loadManifest(path: string = defaultManifestPath()): SeedEntry[] 
     | { servers?: SeedEntry[] };
   const entries = Array.isArray(data) ? data : (data.servers ?? []);
   return entries.filter((e) => e && typeof e.name === "string" && typeof e.spec === "string");
+}
+
+/** The bundled catalog of ready-made servers (`mcpify catalog` / `add`). */
+export function loadCatalog(path: string = defaultManifestPath()): SeedEntry[] {
+  return loadManifest(path);
+}
+
+/**
+ * Find a catalog entry by id (or name, case-insensitively) and resolve its spec
+ * to an absolute location — so `mcpify add github` needs no URL.
+ */
+export function findCatalogEntry(
+  idOrName: string,
+  path: string = defaultManifestPath(),
+): (SeedEntry & { spec: string }) | undefined {
+  const key = idOrName.trim().toLowerCase();
+  const entry = loadCatalog(path).find(
+    (e) => e.id?.toLowerCase() === key || e.name.toLowerCase() === key,
+  );
+  if (!entry) return undefined;
+  const spec = /^https?:\/\//i.test(entry.spec)
+    ? entry.spec
+    : resolve(dirname(path), entry.spec);
+  return { ...entry, spec };
 }
 
 /**

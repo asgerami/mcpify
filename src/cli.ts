@@ -42,7 +42,12 @@ import { ServerRegistry } from "./controlplane/registry.js";
 import { openServerStore } from "./controlplane/store.js";
 import { Vault } from "./controlplane/vault.js";
 import { OAuthManager } from "./controlplane/oauth-manager.js";
-import { seedRegistry, defaultManifestPath } from "./controlplane/seed.js";
+import {
+  seedRegistry,
+  defaultManifestPath,
+  loadCatalog,
+  findCatalogEntry,
+} from "./controlplane/seed.js";
 import { buildControlPlane } from "./controlplane/api.js";
 import {
   buildServerEntry,
@@ -253,41 +258,57 @@ program
     }
   });
 
+const installOptions = (cmd: Command): Command =>
+  cmd
+    .option("-c, --client <name>", "Agent client to configure: claude | cursor", "claude")
+    .option("--config <path>", "Write to a specific MCP config file instead")
+    .option("-n, --name <name>", "Name for the server in the client config")
+    .option("-b, --base-url <url>", "Upstream API base URL override")
+    .option("--print", "Print the config block instead of writing it");
+
+installOptions(
+  program
+    .command("install")
+    .description("Generate an MCP server and wire it into your agent client — one command.")
+    .argument("<api>", "Spec URL/file, an API base URL to auto-discover, or a catalog id"),
+).action(async (api: string, options) => {
+  try {
+    await runInstall(api, options);
+  } catch (err) {
+    fail(err);
+  }
+});
+
+installOptions(
+  program
+    .command("add")
+    .description("Add a ready-made server from the catalog (see `mcpify catalog`).")
+    .argument("<id>", "Catalog id, e.g. github | stripe | petstore"),
+).action(async (id: string, options) => {
+  try {
+    if (!findCatalogEntry(id)) {
+      throw new Error(`Unknown catalog id "${id}". Run \`mcpify catalog\` to see them.`);
+    }
+    await runInstall(id, { ...options, name: options.name ?? id });
+  } catch (err) {
+    fail(err);
+  }
+});
+
 program
-  .command("install")
-  .description("Generate an MCP server and wire it into your agent client — one command.")
-  .argument("<api>", "Spec URL/file, an API base URL to auto-discover, or a catalog name")
-  .option("-c, --client <name>", "Agent client to configure: claude | cursor", "claude")
-  .option("--config <path>", "Write to a specific MCP config file instead")
-  .option("-n, --name <name>", "Name for the server in the client config")
-  .option("-b, --base-url <url>", "Upstream API base URL override")
-  .option("--print", "Print the config block instead of writing it")
-  .action(async (api: string, options) => {
+  .command("catalog")
+  .description("List the ready-made servers you can `mcpify add`.")
+  .action(() => {
     try {
-      const spec = await resolveApiTarget(api);
-      console.error(`→ reading ${spec}…`);
-      const generated = await ingest(spec, { baseUrl: options.baseUrl });
-      const name = slug(options.name ?? generated.name);
-      const entry = buildServerEntry(spec, options.baseUrl);
-      console.error(`→ generated ${generated.tools.length} tools from ${generated.name}`);
-
-      if (options.print) {
-        console.log(JSON.stringify({ mcpServers: { [name]: entry } }, null, 2));
-        return;
+      const entries = loadCatalog();
+      console.log("\nReady-made MCP servers — `mcpify add <id>`\n");
+      for (const e of entries) {
+        const id = (e.id ?? slug(e.name)).padEnd(16);
+        const tools = e.tools ? `${e.tools} tools`.padEnd(11) : "".padEnd(11);
+        const auth = (e.auth === "none" ? "no auth" : `auth: ${e.auth ?? "?"}`).padEnd(14);
+        console.log(`  ${id}${tools}${auth}${e.note ?? ""}`);
       }
-
-      const client = options.client as ClientName;
-      const path = options.config ?? clientConfigPath(client);
-      const result = installServer(path, name, entry);
-      const label = options.config ? path : clientLabel(client);
-
-      console.error(
-        `\n✓ ${result.replaced ? "Updated" : "Added"} "${name}" in ${label}` +
-          `\n  ${result.path}` +
-          (result.backup ? `\n  (backup: ${result.backup})` : "") +
-          `\n\nRestart ${options.config ? "your client" : clientLabel(client)} — ` +
-          `${generated.tools.length} tools from ${generated.name} are ready to use.`,
-      );
+      console.log("\ne.g.  mcpify add petstore    (no key needed — try this one)\n");
     } catch (err) {
       fail(err);
     }
@@ -433,11 +454,62 @@ function slug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "api";
 }
 
+/** Shared by `install` and `add`: resolve → generate → write the client config. */
+async function runInstall(
+  api: string,
+  options: {
+    client?: string;
+    config?: string;
+    name?: string;
+    baseUrl?: string;
+    print?: boolean;
+  },
+): Promise<void> {
+  const spec = await resolveApiTarget(api);
+  console.error(`→ reading ${spec}…`);
+  const generated = await ingest(spec, { baseUrl: options.baseUrl });
+  const name = slug(options.name ?? generated.name);
+  const entry = buildServerEntry(spec, options.baseUrl);
+  console.error(`→ generated ${generated.tools.length} tools from ${generated.name}`);
+
+  if (options.print) {
+    console.log(JSON.stringify({ mcpServers: { [name]: entry } }, null, 2));
+    return;
+  }
+
+  const client = (options.client ?? "claude") as ClientName;
+  const path = options.config ?? clientConfigPath(client);
+  const result = installServer(path, name, entry);
+  const target = options.config ? "your client" : clientLabel(client);
+
+  // Nudge the user if the API needs a credential before it will actually work.
+  const schemes = Object.keys(generated.securitySchemes);
+  const authHint = schemes.length
+    ? `\n\nThis API needs auth (${schemes.join(", ")}). Set it with an env var, e.g.` +
+      `\n  export MCPIFY_BEARER_TOKEN=...    # or MCPIFY_API_KEY / MCPIFY_AUTH_<SCHEME>`
+    : "";
+
+  console.error(
+    `\n✓ ${result.replaced ? "Updated" : "Added"} "${name}" in ${target}` +
+      `\n  ${result.path}` +
+      (result.backup ? `\n  (backup: ${result.backup})` : "") +
+      authHint +
+      `\n\nRestart ${target} — ${generated.tools.length} tools from ${generated.name} are ready.`,
+  );
+}
+
 /**
- * Resolve what the user pointed `install`/`add` at: a catalog name, a bare API
+ * Resolve what the user pointed `install`/`add` at: a catalog id, a bare API
  * base URL (auto-discover its spec), or a spec URL/file used as-is.
  */
 async function resolveApiTarget(api: string): Promise<string> {
+  // A catalog id — no URL needed.
+  const fromCatalog = findCatalogEntry(api);
+  if (fromCatalog) {
+    console.error(`→ ${fromCatalog.name} (catalog)`);
+    return fromCatalog.spec;
+  }
+
   // A bare base URL (no spec file extension) — go find the spec.
   if (/^https?:\/\//i.test(api) && !/\.(json|ya?ml)(\?|#|$)/i.test(api)) {
     console.error(`→ discovering spec under ${api}…`);
