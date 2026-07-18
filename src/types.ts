@@ -58,6 +58,8 @@ export interface ToolDef {
   body?: ToolBody;
   /** Security scheme names this operation requires (OR semantics). */
   security: string[];
+  /** OpenAPI operation tags — used by `--include` / `--exclude` filters. */
+  tags?: string[];
   /**
    * JSON Schema of the success (2xx) response, when it is an object. Drives the
    * MCP tool's `outputSchema` so agents see the return shape and the runtime
@@ -77,6 +79,9 @@ export interface GeneratedServer {
   securitySchemes: Record<string, SecurityScheme>;
 }
 
+/** OAuth2 flows we model from an OpenAPI security scheme. */
+export type OAuthFlow = "authorizationCode" | "clientCredentials";
+
 /** Subset of OpenAPI security schemes we support today. */
 export type SecurityScheme =
   | { type: "http"; scheme: "bearer" | "basic"; name: string }
@@ -88,6 +93,14 @@ export type SecurityScheme =
       authorizationUrl?: string;
       tokenUrl?: string;
       scopes: string[];
+      /** Flows advertised by the spec (drives UI + which grants we offer). */
+      flows: OAuthFlow[];
+    }
+  | {
+      type: "openIdConnect";
+      name: string;
+      /** OpenID Provider discovery document URL. */
+      openIdConnectUrl: string;
     };
 
 /** A permissive JSON Schema shape; we only read the fields we map. */

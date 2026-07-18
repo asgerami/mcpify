@@ -33,6 +33,7 @@ loadEnvFiles();
 import { ingest } from "./parser/openapi.js";
 import { discoverSpec } from "./parser/discover.js";
 import { enrichTools } from "./generator/enrich.js";
+import { filterTools, hasToolFilter } from "./generator/filter.js";
 import { createMcpServer, createReloadableServer } from "./runtime/server.js";
 import { serveStdio, serveHttp } from "./runtime/transport.js";
 import { watchSpec } from "./runtime/watch.js";
@@ -72,7 +73,7 @@ const program = new Command();
 program
   .name("wrangl")
   .description("Turn any REST API into an agent-ready MCP server in minutes.")
-  .version("0.1.0");
+  .version("0.2.0");
 
 program
   .command("generate")
@@ -102,6 +103,18 @@ program
     [],
   )
   .option(
+    "--include <pattern>",
+    "Only keep tools matching name/path/tag (glob, repeatable)",
+    collect,
+    [],
+  )
+  .option(
+    "--exclude <pattern>",
+    "Drop tools matching name/path/tag (glob, repeatable)",
+    collect,
+    [],
+  )
+  .option(
     "-e, --enrich",
     "Run the LLM semantic-enrichment pass (needs ANTHROPIC_API_KEY)",
   )
@@ -121,6 +134,7 @@ program
       const specSource = await resolveSpec(options);
       // `active` is the live spec; the http build closure and watcher read it.
       let active = await ingest(specSource, { baseUrl: options.baseUrl });
+      applyToolFilter(active, options);
       await maybeEnrich(active, options);
       logSummary(active);
 
@@ -163,6 +177,7 @@ program
         );
         // New HTTP sessions read `active`, so swapping it applies the new spec.
         startWatch((next) => {
+          applyToolFilter(next, options);
           const diff = diffTools(active.tools, next.tools);
           active = next;
           if (hasChanges(diff)) console.error(`\n↻ spec changed:\n${formatDiff(diff)}`);
@@ -171,6 +186,7 @@ program
         const reloadable = createReloadableServer(active, { creds, onLog });
         console.error("\nMCP server live on stdio. Connect an agent client.");
         startWatch((next) => {
+          applyToolFilter(next, options);
           const diff = reloadable.reload(next);
           active = next;
           if (hasChanges(diff)) console.error(`\n↻ spec changed:\n${formatDiff(diff)}`);
@@ -190,6 +206,18 @@ program
   .option("-b, --base-url <url>", "Upstream API base URL")
   .option("--json", "Output the full tool definitions as JSON")
   .option(
+    "--include <pattern>",
+    "Only keep tools matching name/path/tag (glob, repeatable)",
+    collect,
+    [],
+  )
+  .option(
+    "--exclude <pattern>",
+    "Drop tools matching name/path/tag (glob, repeatable)",
+    collect,
+    [],
+  )
+  .option(
     "-e, --enrich",
     "Run the LLM semantic-enrichment pass (needs ANTHROPIC_API_KEY)",
   )
@@ -200,6 +228,7 @@ program
       const generated = await ingest(await resolveSpec(options), {
         baseUrl: options.baseUrl,
       });
+      applyToolFilter(generated, options);
       await maybeEnrich(generated, options);
       if (options.json) {
         console.log(JSON.stringify(generated, null, 2));
@@ -264,6 +293,18 @@ const installOptions = (cmd: Command): Command =>
     .option("--config <path>", "Write to a specific MCP config file instead")
     .option("-n, --name <name>", "Name for the server in the client config")
     .option("-b, --base-url <url>", "Upstream API base URL override")
+    .option(
+      "--include <pattern>",
+      "Only keep tools matching name/path/tag (glob, repeatable)",
+      collect,
+      [],
+    )
+    .option(
+      "--exclude <pattern>",
+      "Drop tools matching name/path/tag (glob, repeatable)",
+      collect,
+      [],
+    )
     .option("--print", "Print the config block instead of writing it");
 
 installOptions(
@@ -463,13 +504,20 @@ async function runInstall(
     name?: string;
     baseUrl?: string;
     print?: boolean;
+    include?: string[];
+    exclude?: string[];
   },
 ): Promise<void> {
   const spec = await resolveApiTarget(api);
   console.error(`→ reading ${spec}…`);
   const generated = await ingest(spec, { baseUrl: options.baseUrl });
+  applyToolFilter(generated, options);
   const name = slug(options.name ?? generated.name);
-  const entry = buildServerEntry(spec, options.baseUrl);
+  const entry = buildServerEntry(spec, {
+    baseUrl: options.baseUrl,
+    include: options.include,
+    exclude: options.exclude,
+  });
   console.error(`→ generated ${generated.tools.length} tools from ${generated.name}`);
 
   if (options.print) {
@@ -523,6 +571,27 @@ async function resolveApiTarget(api: string): Promise<string> {
     );
   }
   return api;
+}
+
+/** Apply --include / --exclude to a generated server (mutates tools in place). */
+function applyToolFilter(
+  generated: GeneratedServer,
+  options: { include?: string[]; exclude?: string[] },
+): void {
+  const filter = { include: options.include, exclude: options.exclude };
+  if (!hasToolFilter(filter)) return;
+  const before = generated.tools.length;
+  generated.tools = filterTools(generated.tools, filter);
+  console.error(
+    `→ filtered tools ${before} → ${generated.tools.length}` +
+      (options.include?.length ? ` (include: ${options.include.join(", ")})` : "") +
+      (options.exclude?.length ? ` (exclude: ${options.exclude.join(", ")})` : ""),
+  );
+  if (generated.tools.length === 0) {
+    throw new Error(
+      "Tool filter removed every tool. Relax --include / --exclude and try again.",
+    );
+  }
 }
 
 /**

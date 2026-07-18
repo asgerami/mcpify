@@ -1,9 +1,12 @@
 import type { ServerRegistry } from "./registry.js";
 import type { ServerStore } from "./store.js";
 import type { Vault } from "./vault.js";
+import type { OAuthFlow, SecurityScheme } from "../types.js";
 import {
   buildAuthorizeUrl,
+  clientCredentialsGrant,
   codeChallenge,
+  discoverOidc,
   exchangeCode,
   generateCodeVerifier,
   generateState,
@@ -14,11 +17,10 @@ import {
 } from "./oauth.js";
 
 /**
- * Manages the OAuth2 authorization-code flow for hosted servers: stores client
- * config + tokens encrypted (via the vault), builds authorize URLs, handles the
- * callback, refreshes expired tokens, and injects the current access token into
- * the server's live credential store so upstream calls are authenticated on the
- * end user's behalf.
+ * Manages OAuth2 / OpenID Connect for hosted servers: stores client config +
+ * tokens encrypted (via the vault), runs authorization-code (PKCE) or
+ * client_credentials grants, refreshes expired tokens, and injects the current
+ * access token into the server's live credential store.
  */
 
 export interface OAuthConfigInput {
@@ -49,6 +51,8 @@ export interface OAuthStatus {
   configured: boolean;
   connected: boolean;
   expiresAt?: number;
+  /** Flows available for this scheme (from the spec, or both for OIDC). */
+  flows?: OAuthFlow[];
 }
 
 interface Pending {
@@ -82,21 +86,33 @@ export class OAuthManager {
 
   /** Set/merge client config for a scheme, defaulting URLs/scopes from the spec. */
   async configure(serverId: string, scheme: string, input: OAuthConfigInput): Promise<void> {
-    const specScheme = this.specScheme(serverId, scheme);
+    const spec = this.specScheme(serverId, scheme);
+    if (!spec) {
+      throw new Error(`Unknown OAuth/OIDC scheme "${scheme}" on server ${serverId}.`);
+    }
     const existing = await this.loadState(serverId, scheme);
+    const discovered = await this.resolveEndpoints(spec, input, existing?.config);
+
     const config: StoredConfig = {
       clientId: input.clientId,
       clientSecret: input.clientSecret ?? existing?.config.clientSecret,
-      authorizationUrl:
-        input.authorizationUrl ?? existing?.config.authorizationUrl ?? specScheme?.authorizationUrl ?? "",
-      tokenUrl: input.tokenUrl ?? existing?.config.tokenUrl ?? specScheme?.tokenUrl ?? "",
-      scopes: input.scopes ?? existing?.config.scopes ?? specScheme?.scopes ?? [],
+      authorizationUrl: discovered.authorizationUrl,
+      tokenUrl: discovered.tokenUrl,
+      scopes: input.scopes ?? existing?.config.scopes ?? this.specScopes(spec),
       redirectUri: this.callbackUrl,
     };
-    if (!config.authorizationUrl || !config.tokenUrl) {
+
+    const flows = this.flowsFor(spec);
+    const needsAuthUrl = flows.includes("authorizationCode");
+    if (!config.tokenUrl) {
       throw new Error(
-        "OAuth authorizationUrl and tokenUrl are required (the spec did not " +
-          "provide them — pass authorizationUrl/tokenUrl in the config).",
+        "OAuth tokenUrl is required (the spec did not provide it — pass tokenUrl in the config).",
+      );
+    }
+    if (needsAuthUrl && !config.authorizationUrl) {
+      throw new Error(
+        "OAuth authorizationUrl is required for the authorization-code flow " +
+          "(the spec did not provide it — pass authorizationUrl in the config).",
       );
     }
     await this.saveState(serverId, scheme, { config, tokens: existing?.tokens });
@@ -108,6 +124,11 @@ export class OAuthManager {
     if (!state?.config.clientId) {
       throw new Error(`OAuth for "${scheme}" is not configured yet.`);
     }
+    if (!state.config.authorizationUrl) {
+      throw new Error(
+        `Scheme "${scheme}" has no authorizationUrl — use the client_credentials grant instead.`,
+      );
+    }
     const csrf = generateState();
     const verifier = generateCodeVerifier();
     this.pending.set(csrf, { serverId, scheme, codeVerifier: verifier, createdAt: Date.now() });
@@ -116,6 +137,32 @@ export class OAuthManager {
       state: csrf,
       codeChallenge: codeChallenge(verifier),
     });
+  }
+
+  /**
+   * Machine-to-machine: run the client_credentials grant with the stored
+   * client id/secret and inject the access token.
+   */
+  async clientCredentials(serverId: string, scheme: string): Promise<TokenSet> {
+    const state = await this.loadState(serverId, scheme);
+    if (!state?.config.clientId || !state.config.clientSecret) {
+      throw new Error(
+        `OAuth for "${scheme}" needs clientId and clientSecret before client_credentials.`,
+      );
+    }
+    if (!state.config.tokenUrl) {
+      throw new Error(`OAuth for "${scheme}" has no tokenUrl configured.`);
+    }
+    const tokens = await clientCredentialsGrant({
+      tokenUrl: state.config.tokenUrl,
+      clientId: state.config.clientId,
+      clientSecret: state.config.clientSecret,
+      scopes: state.config.scopes,
+    });
+    state.tokens = tokens;
+    await this.saveState(serverId, scheme, state);
+    this.applyToken(serverId, scheme, tokens.accessToken);
+    return tokens;
   }
 
   /** Handle the provider redirect: exchange the code and store the tokens. */
@@ -143,7 +190,15 @@ export class OAuthManager {
   /** Refresh the access token; returns false if no refresh token is available. */
   async refresh(serverId: string, scheme: string): Promise<boolean> {
     const state = await this.loadState(serverId, scheme);
-    if (!state?.tokens?.refreshToken) return false;
+    if (!state?.tokens?.refreshToken) {
+      // client_credentials tokens usually have no refresh token — re-grant.
+      const spec = this.specScheme(serverId, scheme);
+      if (spec && this.flowsFor(spec).includes("clientCredentials") && state?.config.clientSecret) {
+        await this.clientCredentials(serverId, scheme);
+        return true;
+      }
+      return false;
+    }
     const tokens = await refreshTokens(toConfig(state.config), state.tokens.refreshToken);
     state.tokens = tokens;
     await this.saveState(serverId, scheme, state);
@@ -153,20 +208,22 @@ export class OAuthManager {
 
   async status(serverId: string, scheme: string): Promise<OAuthStatus> {
     const state = await this.loadState(serverId, scheme);
+    const spec = this.specScheme(serverId, scheme);
     return {
       scheme,
       configured: !!state?.config.clientId,
       connected: !!state?.tokens?.accessToken,
       expiresAt: state?.tokens?.expiresAt,
+      flows: spec ? this.flowsFor(spec) : undefined,
     };
   }
 
-  /** Statuses for every oauth2 scheme on a server. */
+  /** Statuses for every oauth2 / openIdConnect scheme on a server. */
   async statuses(serverId: string): Promise<OAuthStatus[]> {
     const entry = this.registry.get(serverId);
     if (!entry) return [];
     const oauthSchemes = Object.values(entry.generated.securitySchemes).filter(
-      (s) => s.type === "oauth2",
+      (s) => s.type === "oauth2" || s.type === "openIdConnect",
     );
     return Promise.all(oauthSchemes.map((s) => this.status(serverId, s.name)));
   }
@@ -190,10 +247,9 @@ export class OAuthManager {
     for (const scheme of Object.keys(await this.store.oauthFor(serverId))) {
       const state = await this.loadState(serverId, scheme);
       if (!state?.tokens?.accessToken) continue;
-      if (isExpired(state.tokens) && state.tokens.refreshToken) {
+      if (isExpired(state.tokens)) {
         try {
-          await this.refresh(serverId, scheme);
-          continue;
+          if (await this.refresh(serverId, scheme)) continue;
         } catch {
           // fall through to using the (possibly expired) token
         }
@@ -209,11 +265,48 @@ export class OAuthManager {
     if (entry) entry.creds[scheme] = accessToken; // live injection, by reference
   }
 
-  private specScheme(serverId: string, scheme: string):
-    | { authorizationUrl?: string; tokenUrl?: string; scopes: string[] }
-    | undefined {
-    const s = this.registry.get(serverId)?.generated.securitySchemes[scheme];
-    return s?.type === "oauth2" ? s : undefined;
+  private specScheme(serverId: string, scheme: string): SecurityScheme | undefined {
+    return this.registry.get(serverId)?.generated.securitySchemes[scheme];
+  }
+
+  private flowsFor(scheme: SecurityScheme): OAuthFlow[] {
+    if (scheme.type === "oauth2") return scheme.flows;
+    if (scheme.type === "openIdConnect") {
+      // Discovery docs usually support both; offer both in the UI.
+      return ["authorizationCode", "clientCredentials"];
+    }
+    return [];
+  }
+
+  private specScopes(scheme: SecurityScheme): string[] {
+    return scheme.type === "oauth2" ? scheme.scopes : [];
+  }
+
+  /**
+   * Resolve authorize/token URLs from explicit input, prior config, the OpenAPI
+   * oauth2 scheme, or an OpenID Connect discovery document.
+   */
+  private async resolveEndpoints(
+    spec: SecurityScheme,
+    input: OAuthConfigInput,
+    existing?: StoredConfig,
+  ): Promise<{ authorizationUrl: string; tokenUrl: string }> {
+    let authorizationUrl =
+      input.authorizationUrl ?? existing?.authorizationUrl ?? "";
+    let tokenUrl = input.tokenUrl ?? existing?.tokenUrl ?? "";
+
+    if (spec.type === "oauth2") {
+      authorizationUrl = authorizationUrl || spec.authorizationUrl || "";
+      tokenUrl = tokenUrl || spec.tokenUrl || "";
+    } else if (spec.type === "openIdConnect") {
+      if (!authorizationUrl || !tokenUrl) {
+        const discovered = await discoverOidc(spec.openIdConnectUrl);
+        authorizationUrl = authorizationUrl || discovered.authorizationUrl;
+        tokenUrl = tokenUrl || discovered.tokenUrl;
+      }
+    }
+
+    return { authorizationUrl, tokenUrl };
   }
 
   private async loadState(serverId: string, scheme: string): Promise<OAuthState | undefined> {

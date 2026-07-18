@@ -114,6 +114,53 @@ test("refreshTokens uses the refresh grant and keeps the old refresh token", asy
   }
 });
 
+test("clientCredentialsGrant posts the client_credentials grant", async () => {
+  const { clientCredentialsGrant } = await import("../src/controlplane/oauth.js");
+  const srv = await tokenServer(() => ({
+    access_token: "m2m-1",
+    expires_in: 3600,
+    token_type: "Bearer",
+  }));
+  try {
+    const tokens = await clientCredentialsGrant({
+      tokenUrl: srv.url,
+      clientId: "client-123",
+      clientSecret: "secret-xyz",
+      scopes: ["read"],
+    });
+    const form = srv.last();
+    assert.equal(form.get("grant_type"), "client_credentials");
+    assert.equal(form.get("client_id"), "client-123");
+    assert.equal(form.get("client_secret"), "secret-xyz");
+    assert.equal(form.get("scope"), "read");
+    assert.equal(tokens.accessToken, "m2m-1");
+  } finally {
+    await srv.close();
+  }
+});
+
+test("discoverOidc reads authorization and token endpoints", async () => {
+  const { discoverOidc } = await import("../src/controlplane/oauth.js");
+  const server: Server = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        authorization_endpoint: "https://idp.test/authorize",
+        token_endpoint: "https://idp.test/token",
+      }),
+    );
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const { port } = server.address() as AddressInfo;
+  try {
+    const discovered = await discoverOidc(`http://127.0.0.1:${port}/.well-known/openid-configuration`);
+    assert.equal(discovered.authorizationUrl, "https://idp.test/authorize");
+    assert.equal(discovered.tokenUrl, "https://idp.test/token");
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});
+
 test("exchangeCode throws on a token-endpoint error", async () => {
   const server: Server = createServer((_req, res) => {
     res.writeHead(400).end('{"error":"invalid_grant"}');

@@ -191,7 +191,14 @@ test("proxy refreshes the token and retries once on a 401", async () => {
   let refreshed = false;
   const ctx: ProxyContext = {
     baseUrl: `http://127.0.0.1:${port}`,
-    schemes: { userAuth: { type: "oauth2", name: "userAuth", scopes: [] } },
+    schemes: {
+      userAuth: {
+        type: "oauth2",
+        name: "userAuth",
+        scopes: [],
+        flows: ["authorizationCode"],
+      },
+    },
     creds: { userAuth: "stale" },
     onUnauthorized: async (schemes) => {
       assert.deepEqual(schemes, ["userAuth"]);

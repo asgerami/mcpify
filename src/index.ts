@@ -14,6 +14,12 @@ export {
 } from "./parser/discover.js";
 export { buildTools } from "./generator/tools.js";
 export {
+  filterTools,
+  hasToolFilter,
+  matchGlob,
+  type ToolFilter,
+} from "./generator/filter.js";
+export {
   enrichTools,
   buildBatchPrompt,
   applyEnrichment,
@@ -61,10 +67,13 @@ export {
   buildAuthorizeUrl,
   exchangeCode,
   refreshTokens,
+  clientCredentialsGrant,
+  discoverOidc,
   generateCodeVerifier,
   codeChallenge,
   type OAuthConfig,
   type TokenSet,
+  type OidcDiscovery,
 } from "./controlplane/oauth.js";
 export {
   seedRegistry,
@@ -84,6 +93,7 @@ export {
   type ClientName,
   type McpServerEntry,
   type InstallResult,
+  type BuildServerEntryOptions,
 } from "./clients.js";
 export { executeTool, type ProxyContext, type RequestLog } from "./runtime/proxy.js";
 export {

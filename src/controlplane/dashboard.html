@@ -471,7 +471,7 @@ async function renderCredentials(id, panel) {
       Credentials are injected server-side at request time and never returned. With
       <code>WRANGL_SECRET_KEY</code> set they're encrypted at rest.
     </p>
-    ${schemes.map((s, i) => s.type === "oauth2"
+    ${schemes.map((s, i) => (s.type === "oauth2" || s.type === "openIdConnect")
       ? oauthBlock(s, i, statusBy[s.name])
       : valueBlock(s, i)).join("")}`;
 
@@ -490,10 +490,10 @@ async function renderCredentials(id, panel) {
       } catch (e) { toast(e.message); }
     }));
 
-  // OAuth2 schemes: save client config, then open the provider consent screen.
+  // OAuth2 / OIDC: save client config, then authorize (user) or client-credentials (M2M).
   panel.querySelectorAll("button[data-oauth]").forEach((btn) =>
     btn.addEventListener("click", async () => {
-      const scheme = btn.dataset.oauth, i = btn.dataset.i;
+      const scheme = btn.dataset.oauth, i = btn.dataset.i, grant = btn.dataset.grant;
       const clientId = $("#oa-cid-" + i).value.trim();
       if (!clientId) { toast("Client ID required"); return; }
       const payload = { clientId };
@@ -504,7 +504,14 @@ async function renderCredentials(id, panel) {
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
         });
-        // Authorize returns the provider URL as JSON (admin-gated); open it.
+        if (grant === "client_credentials") {
+          await api("/servers/" + id + "/oauth/" + encodeURIComponent(scheme) + "/client-credentials", {
+            method: "POST",
+          });
+          toast("Connected via client credentials");
+          renderTab(id);
+          return;
+        }
         const { url } = await api("/servers/" + id + "/oauth/" + encodeURIComponent(scheme) + "/authorize");
         window.open(url, "_blank");
         toast("Opening authorization… complete it, then Refresh");
@@ -531,16 +538,27 @@ function oauthBlock(s, i, status) {
   const badge = connected
     ? '<span class="status-ok">● connected</span>'
     : '<span class="meta">not connected</span>';
+  const flows = (status && status.flows) || s.flows || ["authorizationCode"];
+  const kind = s.type === "openIdConnect" ? "oidc" : "oauth2";
+  const authCode = flows.includes("authorizationCode");
+  const clientCreds = flows.includes("clientCredentials");
+  const buttons = [];
+  if (authCode) {
+    buttons.push(`<button data-oauth="${esc(s.name)}" data-i="${i}" data-grant="authorization_code" class="primary">${connected ? "Reconnect" : "Connect"}</button>`);
+  }
+  if (clientCreds) {
+    buttons.push(`<button data-oauth="${esc(s.name)}" data-i="${i}" data-grant="client_credentials" class="${authCode ? "ghost" : "primary"}">Client credentials</button>`);
+  }
+  buttons.push('<button class="ghost creds-refresh">Refresh status</button>');
   return `<div style="border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px">
     <label style="display:flex; justify-content:space-between">
-      <span>${esc(s.name)} <span class="meta">(oauth2)</span></span> ${badge}
+      <span>${esc(s.name)} <span class="meta">(${kind}${s.detail ? " · " + esc(s.detail) : ""})</span></span> ${badge}
     </label>
     <div style="display:grid; gap:6px; margin-top:6px">
       <input id="oa-cid-${i}" placeholder="Client ID" />
-      <input id="oa-sec-${i}" type="password" placeholder="Client Secret (if required)" />
-      <div style="display:flex; gap:8px">
-        <button data-oauth="${esc(s.name)}" data-i="${i}" class="primary">${connected ? "Reconnect" : "Connect"}</button>
-        <button class="ghost creds-refresh">Refresh status</button>
+      <input id="oa-sec-${i}" type="password" placeholder="Client Secret${clientCreds ? " (required for M2M)" : " (if required)"}" />
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        ${buttons.join("")}
       </div>
     </div>
   </div>`;

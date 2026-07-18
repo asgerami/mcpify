@@ -129,7 +129,12 @@ export function buildControlPlane(
           ? `${s.in}:${s.paramName}`
           : s.type === "http"
             ? s.scheme
-            : (s.scopes.join(" ") || "authorization_code"),
+            : s.type === "openIdConnect"
+              ? s.openIdConnectUrl
+              : (s.flows.join(",") || s.scopes.join(" ") || "authorization_code"),
+      flows: s.type === "oauth2" ? s.flows : s.type === "openIdConnect"
+        ? (["authorizationCode", "clientCredentials"] as const)
+        : undefined,
     }));
     return {
       ...toSummary(entry),
@@ -336,6 +341,22 @@ export function buildControlPlane(
       );
     } catch (err) {
       return reply.code(400).type("text/html").send(callbackPage(errMessage(err)));
+    }
+  });
+
+  // Machine-to-machine: exchange client_id/secret for an access token.
+  app.post("/servers/:id/oauth/:scheme/client-credentials", async (request, reply) => {
+    if (!oauth) return oauthDisabled(reply);
+    const id = idParam(request);
+    if (!(await resolveServer(id))) return notFound(reply);
+    try {
+      const tokens = await oauth.clientCredentials(id, schemeParam(request));
+      return {
+        connected: true,
+        expiresAt: tokens.expiresAt,
+      };
+    } catch (err) {
+      return reply.code(400).send({ error: errMessage(err) });
     }
   });
 

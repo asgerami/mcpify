@@ -71,6 +71,21 @@ test("buildServerEntry launches `generate` with the spec", () => {
   assert.ok(entry.args.includes("--base-url"));
 });
 
+test("buildServerEntry forwards include/exclude filter flags", () => {
+  const entry = buildServerEntry("https://api.test/openapi.json", {
+    include: ["repos*", "issues*"],
+    exclude: ["*webhook*"],
+  });
+  assert.deepEqual(
+    entry.args.filter((_, i, a) => a[i - 1] === "--include"),
+    ["repos*", "issues*"],
+  );
+  assert.deepEqual(
+    entry.args.filter((_, i, a) => a[i - 1] === "--exclude"),
+    ["*webhook*"],
+  );
+});
+
 test("clientConfigPath points at the right file per client", () => {
   assert.match(clientConfigPath("cursor", "/home/u"), /\.cursor[/\\]mcp\.json$/);
   assert.match(clientConfigPath("claude", "/home/u"), /[Cc]laude/);

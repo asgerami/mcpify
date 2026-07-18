@@ -9,6 +9,28 @@ While the project is pre-1.0, minor versions may include breaking changes.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-18
+
+### Added
+
+- **Tool filters.** `--include` / `--exclude` (glob) on `generate`, `inspect`,
+  `install`, and `add` match tool name, path, `METHOD path`, or OpenAPI tags.
+  The control plane `POST /servers` body accepts `include` / `exclude` arrays
+  too. Use this to keep huge catalogs (GitHub, Stripe) agent-usable.
+- **OAuth2 client_credentials.** Machine-to-machine grant via
+  `POST /servers/:id/oauth/:scheme/client-credentials`, with a dashboard button.
+  Specs that only advertise `clientCredentials` no longer require an
+  authorization URL.
+- **OpenID Connect.** `openIdConnect` security schemes are ingested; discovery
+  documents supply authorize/token endpoints for the OAuth manager.
+- **CI.** Postgres job on every PR; nightly workflow runs live-network tests and
+  Postgres. Tag `v*` publishes to npm (`NPM_TOKEN` secret) with pack-content
+  checks.
+
+### Changed
+
+- README documents a from-source install path alongside `npx`.
+
 ## [0.1.0] - 2026-07-15
 
 First public release. Wrangl turns any REST API into an agent-ready MCP server.
@@ -42,5 +64,6 @@ First public release. Wrangl turns any REST API into an agent-ready MCP server.
 - **Deployment.** Docker image and Compose files, Caddy TLS, admin token,
   per-server tokens and rate limits, and a Postgres backend for multiple replicas.
 
-[Unreleased]: https://github.com/asgerami/wrangl/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/asgerami/wrangl/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/asgerami/wrangl/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/asgerami/wrangl/releases/tag/v0.1.0

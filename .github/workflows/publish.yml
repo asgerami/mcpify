@@ -1,0 +1,35 @@
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+        env:
+          WRANGL_SKIP_NETWORK: "1"
+      - name: Verify pack contents
+        run: |
+          tarball=$(npm pack)
+          tar -tzf "$tarball" | grep -q 'package/prebuilt/manifest.json'
+          tar -tzf "$tarball" | grep -q 'package/dist/controlplane/dashboard.html'
+          rm -f "$tarball"
+      - run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -51,6 +51,8 @@ wrangl install <api> [options]     Discover, generate, and wire into your agent 
   -n, --name <name>       Name for the server in the client config
   --config <path>         Write to a specific MCP config file instead
   -b, --base-url <url>    Upstream API base URL override
+  --include <pattern>     Only keep matching tools (glob; name/path/tag; repeatable)
+  --exclude <pattern>     Drop matching tools (glob; repeatable)
   --print                 Print the config block instead of writing it
 
 wrangl add <id>                    Install a ready-made server from the catalog
@@ -63,13 +65,15 @@ wrangl generate --spec <url|file> [options]
   -t, --transport <type>  stdio | http (default stdio)
   -p, --port <number>     Port for the http transport (default 3000)
   -a, --auth <scheme=value>   Inject a credential for a security scheme (repeatable)
+  --include <pattern>     Only keep matching tools (glob; name/path/tag; repeatable)
+  --exclude <pattern>     Drop matching tools (glob; repeatable)
   -e, --enrich            Run the LLM semantic-enrichment pass (needs ANTHROPIC_API_KEY)
   -m, --model <id>        Claude model for enrichment (default claude-opus-4-8)
   --effort <level>        Enrichment reasoning effort: low | medium | high (default low)
   -l, --log-db [path]     Persist tool-call logs to SQLite (default .wrangl/logs.db)
   -w, --watch <seconds>   Re-ingest the spec every N seconds and hot-reload tools
 
-wrangl inspect --spec <url|file> [--json] [--enrich] [--discover <url>]
+wrangl inspect --spec <url|file> [--json] [--enrich] [--discover <url>] [--include] [--exclude]
   Parse a spec and print the generated tools without serving.
 
 wrangl serve [options]             Control-plane API + dashboard hosting many servers
@@ -104,8 +108,25 @@ the file first.
 ```bash
 wrangl install https://petstore3.swagger.io   # to Claude Desktop
 wrangl add stripe --client cursor             # to Cursor
+wrangl add github --include "repos*" --exclude "*webhook*"
 wrangl install <api> --print                  # just print the config block
 ```
+
+### Filtering tools on huge APIs
+
+GitHub and Stripe expose hundreds of operations. Agents work better with a
+focused subset. `--include` / `--exclude` take glob patterns (`*`, `?`) and
+match against the tool name, path template, or OpenAPI tags. Patterns that
+contain a space also match `METHOD path` (e.g. `GET /repos*`):
+
+```bash
+wrangl inspect --spec github.yaml --include "/repos/*" --include "issues"
+wrangl add github --include "repos*" --include "*pull*"
+```
+
+Patterns are OR within `--include` (keep if any matches) and OR within
+`--exclude` (drop if any matches). Exclude runs after include. The same fields
+are accepted on `POST /servers` as `"include":["…"]` / `"exclude":["…"]`.
 
 Or add it by hand to your client's config (`claude_desktop_config.json`):
 
@@ -126,7 +147,8 @@ Restart the client and the API's endpoints appear as callable tools.
 
 Credentials are resolved per security scheme and injected at request time, so
 agents never see them. Supported schemes: Bearer, Basic, API Key (header, query,
-or cookie), and OAuth2 (see [OAuth2](#oauth2)).
+or cookie), OAuth2 (authorization-code and client_credentials), and OpenID
+Connect (see [OAuth2](#oauth2)).
 
 Provide credentials by environment variable (preferred) or the `--auth` flag:
 
@@ -271,19 +293,29 @@ for embedding.
 
 ## OAuth2
 
-For servers whose spec declares an `oauth2` authorization-code scheme, the
-control plane runs the full flow: configure the client, redirect the user to
-consent, exchange the code (with PKCE), and inject the access token into upstream
-calls. Tokens are encrypted at rest (requires `WRANGL_SECRET_KEY`) and
-auto-refreshed on a 401. Drive it from the dashboard's Credentials tab, or the
-API:
+For servers whose spec declares an `oauth2` or `openIdConnect` scheme, the
+control plane can authenticate upstream calls on the agent's behalf. Tokens are
+encrypted at rest (requires `WRANGL_SECRET_KEY`) and auto-refreshed on a 401.
+
+**Authorization code (PKCE).** Configure the client, redirect the user to
+consent, exchange the code, inject the access token. Drive it from the
+dashboard's Credentials tab or the API.
+
+**Client credentials.** For machine-to-machine APIs, save `clientId` +
+`clientSecret` then call the client-credentials endpoint (or the dashboard
+button). No user redirect. Specs that only advertise `clientCredentials` do not
+need an authorization URL.
+
+**OpenID Connect.** Specs with `type: openIdConnect` are ingested; configuring
+OAuth fetches the discovery document for authorize/token endpoints.
 
 ```
-POST /servers/:id/oauth/:scheme/config      {clientId, clientSecret?, ...}
-GET  /servers/:id/oauth/:scheme/authorize   returns the provider consent URL
-GET  /oauth/callback?code&state             exchanges and stores tokens
-GET  /servers/:id/oauth                     connection status per scheme
-POST /servers/:id/oauth/:scheme/refresh     force a token refresh
+POST /servers/:id/oauth/:scheme/config               {clientId, clientSecret?, ...}
+GET  /servers/:id/oauth/:scheme/authorize            provider consent URL
+POST /servers/:id/oauth/:scheme/client-credentials   M2M token grant
+GET  /oauth/callback?code&state                      exchanges and stores tokens
+GET  /servers/:id/oauth                              connection status per scheme
+POST /servers/:id/oauth/:scheme/refresh              force a token refresh
 ```
 
 ## Securing a deployment

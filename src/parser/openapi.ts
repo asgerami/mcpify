@@ -148,17 +148,29 @@ function mapSecuritySchemes(api: OpenAPIDoc): Record<string, SecurityScheme> {
         name,
       };
     } else if (raw.type === "oauth2") {
-      // Prefer the authorization-code flow; fall back to any flow's tokenUrl.
-      const flow = raw.flows?.authorizationCode ?? Object.values(raw.flows ?? {})[0];
+      const flows: Array<"authorizationCode" | "clientCredentials"> = [];
+      if (raw.flows?.authorizationCode) flows.push("authorizationCode");
+      if (raw.flows?.clientCredentials) flows.push("clientCredentials");
+      // Prefer authorization-code URLs; fall back to client-credentials / any flow.
+      const preferred =
+        raw.flows?.authorizationCode ??
+        raw.flows?.clientCredentials ??
+        Object.values(raw.flows ?? {})[0];
       out[name] = {
         type: "oauth2",
         name,
         authorizationUrl: raw.flows?.authorizationCode?.authorizationUrl,
-        tokenUrl: flow?.tokenUrl,
-        scopes: flow?.scopes ? Object.keys(flow.scopes) : [],
+        tokenUrl: preferred?.tokenUrl,
+        scopes: preferred?.scopes ? Object.keys(preferred.scopes) : [],
+        flows: flows.length ? flows : ["authorizationCode"],
+      };
+    } else if (raw.type === "openIdConnect" && raw.openIdConnectUrl) {
+      out[name] = {
+        type: "openIdConnect",
+        name,
+        openIdConnectUrl: raw.openIdConnectUrl,
       };
     }
-    // openIdConnect is not modelled yet.
   }
   return out;
 }
@@ -189,6 +201,7 @@ export interface RawSecurityScheme {
   in?: string;
   name?: string;
   flows?: Record<string, RawOAuthFlow | undefined>;
+  openIdConnectUrl?: string;
 }
 
 export interface RawOAuthFlow {
@@ -207,6 +220,7 @@ export interface Operation {
   operationId?: string;
   summary?: string;
   description?: string;
+  tags?: string[];
   parameters?: RawParameter[];
   requestBody?: {
     description?: string;

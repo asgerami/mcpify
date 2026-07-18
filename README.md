@@ -33,16 +33,23 @@ Requires **Node 22+**.
 npx wrangl install https://petstore3.swagger.io
 
 # No spec handy? Pick a ready-made one from the catalog.
-npx wrangl add github        # 1,204 tools
-npx wrangl add stripe        # 587 tools
-npx wrangl catalog           # see them all
+npx wrangl add github --include "repos*"   # filter a huge API
+npx wrangl add stripe                      # 587 tools
+npx wrangl catalog                         # see them all
 
 # Prefer a UI? A dashboard to create, test, and monitor servers.
 npx wrangl serve             # http://localhost:4000
 ```
 
-Target Cursor instead with `--client cursor`. Run from source with
-`npm install && npm run dev -- <command>`.
+Target Cursor instead with `--client cursor`.
+
+From source (or before the package is on your npm registry):
+
+```bash
+git clone https://github.com/asgerami/wrangl.git && cd wrangl
+npm install && npm run build
+node dist/cli.js install https://petstore3.swagger.io
+```
 
 ## Why Wrangl
 
@@ -53,10 +60,11 @@ Target Cursor instead with `--client cursor`. Run from source with
 - **Auto-discovery.** Point at a bare base URL and Wrangl probes well-known paths
   and even reads the docs page to find the OpenAPI spec.
 - **Works with real APIs.** OpenAPI 3.x and Postman collections, tricky
-  `style`/`explode` params, relative server URLs, and huge specs (the full
-  1,204-tool GitHub API).
-- **Auth handled.** Bearer, Basic, API key, and full OAuth2 (PKCE, encrypted
-  tokens, auto-refresh). Credentials stay server-side.
+  `style`/`explode` params, relative server URLs, and huge specs — use
+  `--include` / `--exclude` to keep agent tool lists focused.
+- **Auth handled.** Bearer, Basic, API key, OAuth2 (authorization-code + PKCE,
+  client_credentials), and OpenID Connect discovery. Credentials stay
+  server-side.
 - **A real dashboard.** Create servers, run any tool interactively, browse
   request/response logs, and view per-tool analytics.
 - **Production-ready.** Docker image, per-server tokens and rate limits, admin

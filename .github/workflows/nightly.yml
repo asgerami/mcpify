@@ -1,31 +1,25 @@
-name: CI
+name: Nightly
 
 on:
-  push:
-    branches: [master]
-  pull_request:
+  schedule:
+    # 06:15 UTC daily — catch catalog/spec drift against the public internet.
+    - cron: "15 6 * * *"
+  workflow_dispatch:
 
 jobs:
-  test:
+  network:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node: ["22", "24"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: "22"
           cache: npm
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-      # Skip tests that reach out to the public internet so CI is deterministic;
-      # the local-HTTP and in-memory tests still run. Nightly re-enables them.
+      # Intentionally no WRANGL_SKIP_NETWORK — exercises Petstore/GitHub/Stripe etc.
       - run: npm test
-        env:
-          WRANGL_SKIP_NETWORK: "1"
 
   postgres:
     runs-on: ubuntu-latest

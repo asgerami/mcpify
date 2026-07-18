@@ -55,6 +55,7 @@ export function buildTools(
         params,
         body,
         security,
+        tags: op.tags?.length ? [...op.tags] : undefined,
         outputSchema,
       });
     }

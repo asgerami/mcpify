@@ -42,11 +42,27 @@ export function selfCommand(entryPath = process.argv[1] ?? ""): McpServerEntry {
     : { command: "node", args: [abs] };
 }
 
+/** Optional flags forwarded into the generated `wrangl generate` command. */
+export interface BuildServerEntryOptions {
+  baseUrl?: string;
+  include?: string[];
+  exclude?: string[];
+}
+
 /** Build the client entry that launches a generated MCP server over stdio. */
-export function buildServerEntry(spec: string, baseUrl?: string): McpServerEntry {
+export function buildServerEntry(
+  spec: string,
+  baseUrlOrOpts?: string | BuildServerEntryOptions,
+): McpServerEntry {
+  const opts: BuildServerEntryOptions =
+    typeof baseUrlOrOpts === "string" || baseUrlOrOpts === undefined
+      ? { baseUrl: baseUrlOrOpts }
+      : baseUrlOrOpts;
   const self = selfCommand();
   const args = [...self.args, "generate", "--spec", spec];
-  if (baseUrl) args.push("--base-url", baseUrl);
+  if (opts.baseUrl) args.push("--base-url", opts.baseUrl);
+  for (const pattern of opts.include ?? []) args.push("--include", pattern);
+  for (const pattern of opts.exclude ?? []) args.push("--exclude", pattern);
   return { command: self.command, args };
 }
 

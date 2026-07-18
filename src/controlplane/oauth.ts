@@ -92,6 +92,66 @@ export async function refreshTokens(
   return next;
 }
 
+/**
+ * Machine-to-machine: exchange client_id + client_secret for an access token
+ * (OAuth 2.0 client_credentials grant). No user redirect.
+ */
+export async function clientCredentialsGrant(
+  config: Pick<OAuthConfig, "tokenUrl" | "clientId" | "clientSecret" | "scopes">,
+  timeoutMs = 10_000,
+): Promise<TokenSet> {
+  if (!config.clientSecret) {
+    throw new Error("client_credentials grant requires a clientSecret.");
+  }
+  const body = new URLSearchParams({
+    grant_type: "client_credentials",
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
+  });
+  if (config.scopes.length) body.set("scope", config.scopes.join(" "));
+  return tokenRequest(config.tokenUrl, body, timeoutMs);
+}
+
+/** Endpoints resolved from an OpenID Connect discovery document. */
+export interface OidcDiscovery {
+  authorizationUrl: string;
+  tokenUrl: string;
+}
+
+/**
+ * Fetch an OpenID Provider's discovery document and pull the authorize/token
+ * endpoints Wrangl needs for the authorization-code or client_credentials flow.
+ */
+export async function discoverOidc(
+  openIdConnectUrl: string,
+  timeoutMs = 10_000,
+): Promise<OidcDiscovery> {
+  const res = await fetch(openIdConnectUrl, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(
+      `OIDC discovery returned HTTP ${res.status}: ${text.slice(0, 300)}`,
+    );
+  }
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`OIDC discovery returned non-JSON: ${text.slice(0, 200)}`);
+  }
+  const authorizationUrl = json.authorization_endpoint;
+  const tokenUrl = json.token_endpoint;
+  if (typeof authorizationUrl !== "string" || typeof tokenUrl !== "string") {
+    throw new Error(
+      "OIDC discovery document missing authorization_endpoint or token_endpoint.",
+    );
+  }
+  return { authorizationUrl, tokenUrl };
+}
+
 /** Is the access token missing or within `skewMs` of expiry? */
 export function isExpired(tokens: TokenSet, skewMs = 60_000): boolean {
   if (!tokens.accessToken) return true;

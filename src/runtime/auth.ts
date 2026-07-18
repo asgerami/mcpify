@@ -48,8 +48,8 @@ export function buildAuthInjection(
       }
       return injection;
     }
-    if (scheme.type === "oauth2") {
-      // The credential value is the current OAuth access token.
+    if (scheme.type === "oauth2" || scheme.type === "openIdConnect") {
+      // The credential value is the current OAuth / OIDC access token.
       injection.headers["Authorization"] = `Bearer ${value}`;
       return injection;
     }

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { ingest } from "../parser/openapi.js";
 import { diffTools, type SpecDiff } from "../generator/diff.js";
+import { filterTools, type ToolFilter } from "../generator/filter.js";
 import { type LogStore, type LogQuery, type LogRow } from "../runtime/logstore.js";
 import { loadCredentialsFromEnv, type CredentialStore } from "../runtime/auth.js";
 import { type ServerStore, type ServerRecord } from "./store.js";
@@ -22,6 +23,9 @@ export interface CreateServerInput {
   baseUrl?: string;
   /** Initial credentials, keyed by security-scheme name. */
   auth?: CredentialStore;
+  /** Narrow the generated tool list (see `--include` / `--exclude`). */
+  include?: string[];
+  exclude?: string[];
 }
 
 export interface ServerEntry {
@@ -83,6 +87,7 @@ export class ServerRegistry {
       baseUrl: input.baseUrl,
       createdAt: Date.now(),
       auth: input.auth,
+      toolFilter: { include: input.include, exclude: input.exclude },
     });
     this.entries.set(entry.slug, entry);
     await this.serverStore?.upsert(toRecord(entry));
@@ -139,8 +144,12 @@ export class ServerRegistry {
     createdAt: number;
     auth?: CredentialStore;
     mcpToken?: string;
+    toolFilter?: ToolFilter;
   }): Promise<ServerEntry> {
     const generated = await ingest(input.spec, { baseUrl: input.baseUrl });
+    if (input.toolFilter) {
+      generated.tools = filterTools(generated.tools, input.toolFilter);
+    }
     const name = input.name ?? generated.name;
     const slug = input.slug ?? this.uniqueSlug(name);
     const creds: CredentialStore = {
