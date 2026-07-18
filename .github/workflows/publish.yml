@@ -26,7 +26,7 @@ jobs:
           WRANGL_SKIP_NETWORK: "1"
       - name: Verify pack contents
         run: |
-          tarball=$(npm pack)
+          tarball=$(npm pack --loglevel=silent)
           tar -tzf "$tarball" | grep -q 'package/prebuilt/manifest.json'
           tar -tzf "$tarball" | grep -q 'package/dist/controlplane/dashboard.html'
           rm -f "$tarball"
