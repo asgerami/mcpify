@@ -30,6 +30,17 @@ jobs:
           tar -tzf "$tarball" | grep -q 'package/prebuilt/manifest.json'
           tar -tzf "$tarball" | grep -q 'package/dist/controlplane/dashboard.html'
           rm -f "$tarball"
+      - name: Check if version is already published
+        id: check
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
       - run: npm publish --access public --provenance
+        if: steps.check.outputs.published == 'false'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
