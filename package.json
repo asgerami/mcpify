@@ -25,12 +25,13 @@
   },
   "author": "asgerami",
   "scripts": {
-    "build": "tsc && cp src/controlplane/dashboard.html dist/controlplane/dashboard.html",
+    "build": "tsc && cp src/controlplane/dashboard.html dist/controlplane/dashboard.html && node scripts/ensure-bin.mjs",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
     "test": "node --test --import tsx ./test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "prepare": "node scripts/ensure-bin.mjs"
   },
   "engines": {
     "node": ">=22"

@@ -43,13 +43,18 @@ npx @asgerami/wrangl serve             # http://localhost:4000
 
 Target Cursor instead with `--client cursor`.
 
-From source (or before the package is on your npm registry):
+From source:
 
 ```bash
 git clone https://github.com/asgerami/wrangl.git && cd wrangl
 npm install && npm run build
-node dist/cli.js install https://petstore3.swagger.io
+npm run start -- install https://petstore3.swagger.io
+# or:  npx @asgerami/wrangl install …   (works after build)
 ```
+
+> Tip: if `npx @asgerami/wrangl` says `wrangl: command not found` while you are
+> inside this git checkout, run `npm run build` once (or `cd` out of the repo —
+> `npx` works fine from any other directory).
 
 ## Why Wrangl
 
