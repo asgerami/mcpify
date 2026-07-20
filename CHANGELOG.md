@@ -9,6 +9,13 @@ While the project is pre-1.0, minor versions may include breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- **More `install`/`add` clients.** `--client` now also accepts `windsurf`,
+  `cline`, `zed`, and `vscode`, alongside `claude` and `cursor`. Zed and VS
+  Code use their own config shape (`context_servers`/`source: "custom"` and
+  `servers`/`type: "stdio"` respectively) — handled automatically per client.
+
 ## [0.2.0] - 2026-07-18
 
 ### Changed

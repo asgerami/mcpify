@@ -41,7 +41,7 @@ npx @asgerami/wrangl catalog                         # see them all
 npx @asgerami/wrangl serve             # http://localhost:4000
 ```
 
-Target Cursor instead with `--client cursor`.
+Target another agent with `--client cursor|windsurf|cline|zed|vscode`.
 
 From source:
 

@@ -4,11 +4,18 @@ import { dirname, join, resolve } from "node:path";
 
 /**
  * Agent-client integration: write a generated MCP server straight into the
- * config file of Claude Desktop / Cursor, so `wrangl install <api>` is the whole
- * setup. All these clients share the same `mcpServers` config shape.
+ * config file of an agent client, so `wrangl install <api>` is the whole
+ * setup. Claude Desktop, Cursor, Windsurf, and Cline all share the same
+ * `mcpServers` config shape; Zed (`context_servers`) and VS Code (`servers`)
+ * use their own top-level key and per-entry fields.
  */
 
-export type ClientName = "claude" | "cursor";
+export const CLIENT_NAMES = ["claude", "cursor", "windsurf", "cline", "zed", "vscode"] as const;
+export type ClientName = (typeof CLIENT_NAMES)[number];
+
+export function isClientName(value: string): value is ClientName {
+  return (CLIENT_NAMES as readonly string[]).includes(value);
+}
 
 export interface McpServerEntry {
   command: string;
@@ -16,8 +23,64 @@ export interface McpServerEntry {
 }
 
 /** Where each supported client keeps its MCP config, per platform. */
-export function clientConfigPath(client: ClientName, home = homedir()): string {
+export function clientConfigPath(
+  client: ClientName,
+  home = homedir(),
+  cwd = process.cwd(),
+): string {
   if (client === "cursor") return join(home, ".cursor", "mcp.json");
+  if (client === "windsurf") return join(home, ".codeium", "windsurf", "mcp_config.json");
+
+  // VS Code's native MCP support reads a workspace-relative file.
+  if (client === "vscode") return join(cwd, ".vscode", "mcp.json");
+
+  // Cline (VS Code extension) keeps its own settings apart from VS Code's own mcp.json.
+  if (client === "cline") {
+    if (process.platform === "darwin") {
+      return join(
+        home,
+        "Library",
+        "Application Support",
+        "Code",
+        "User",
+        "globalStorage",
+        "saoudrizwan.claude-dev",
+        "settings",
+        "cline_mcp_settings.json",
+      );
+    }
+    if (process.platform === "win32") {
+      const appData = process.env.APPDATA ?? join(home, "AppData", "Roaming");
+      return join(
+        appData,
+        "Code",
+        "User",
+        "globalStorage",
+        "saoudrizwan.claude-dev",
+        "settings",
+        "cline_mcp_settings.json",
+      );
+    }
+    return join(
+      home,
+      ".config",
+      "Code",
+      "User",
+      "globalStorage",
+      "saoudrizwan.claude-dev",
+      "settings",
+      "cline_mcp_settings.json",
+    );
+  }
+
+  // Zed keeps MCP entries in its general settings.json under "context_servers".
+  if (client === "zed") {
+    if (process.platform === "win32") {
+      const appData = process.env.APPDATA ?? join(home, "AppData", "Roaming");
+      return join(appData, "Zed", "settings.json");
+    }
+    return join(home, ".config", "zed", "settings.json");
+  }
 
   // Claude Desktop
   if (process.platform === "darwin") {
@@ -28,6 +91,20 @@ export function clientConfigPath(client: ClientName, home = homedir()): string {
     return join(appData, "Claude", "claude_desktop_config.json");
   }
   return join(home, ".config", "Claude", "claude_desktop_config.json");
+}
+
+/** The top-level config key each client reads its server list from. */
+export function clientConfigKey(client: ClientName): string {
+  if (client === "vscode") return "servers";
+  if (client === "zed") return "context_servers";
+  return "mcpServers";
+}
+
+/** Shape a generic server entry into what this client's config expects. */
+export function clientEntry(client: ClientName, entry: McpServerEntry): Record<string, unknown> {
+  if (client === "vscode") return { type: "stdio", command: entry.command, args: entry.args };
+  if (client === "zed") return { source: "custom", command: entry.command, args: entry.args };
+  return { ...entry };
 }
 
 /**
@@ -75,16 +152,18 @@ export interface InstallResult {
 }
 
 /**
- * Merge one server into a client's MCP config, preserving every other entry.
- * Creates the file (and parent dirs) when missing, and backs up an existing one
- * before rewriting it.
+ * Merge one server into a client's MCP config, preserving every other entry
+ * (including unrelated settings in shared files like Zed's settings.json).
+ * Creates the file (and parent dirs) when missing, and backs up an existing
+ * one before rewriting it.
  */
 export function installServer(
   configPath: string,
   name: string,
-  entry: McpServerEntry,
+  entry: McpServerEntry | Record<string, unknown>,
+  configKey = "mcpServers",
 ): InstallResult {
-  let config: { mcpServers?: Record<string, McpServerEntry> } = {};
+  let config: Record<string, unknown> = {};
   let backup: string | undefined;
 
   if (existsSync(configPath)) {
@@ -103,9 +182,9 @@ export function installServer(
     copyFileSync(configPath, backup);
   }
 
-  const servers = config.mcpServers ?? {};
+  const servers = (config[configKey] as Record<string, unknown>) ?? {};
   const replaced = name in servers;
-  config.mcpServers = { ...servers, [name]: entry };
+  config[configKey] = { ...servers, [name]: entry };
 
   mkdirSync(dirname(configPath), { recursive: true });
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
@@ -114,5 +193,18 @@ export function installServer(
 
 /** Human label for the restart hint after installing. */
 export function clientLabel(client: ClientName): string {
-  return client === "cursor" ? "Cursor" : "Claude Desktop";
+  switch (client) {
+    case "cursor":
+      return "Cursor";
+    case "windsurf":
+      return "Windsurf";
+    case "cline":
+      return "Cline";
+    case "zed":
+      return "Zed";
+    case "vscode":
+      return "VS Code";
+    default:
+      return "Claude Desktop";
+  }
 }

@@ -47,7 +47,8 @@ Petstore) to keep ingestion and schema generation robust.
 
 ```
 wrangl install <api> [options]     Discover, generate, and wire into your agent client
-  -c, --client <name>     Agent client to configure: claude | cursor (default claude)
+  -c, --client <name>     Agent client to configure: claude | cursor | windsurf |
+                          cline | zed | vscode (default claude)
   -n, --name <name>       Name for the server in the client config
   --config <path>         Write to a specific MCP config file instead
   -b, --base-url <url>    Upstream API base URL override
@@ -102,15 +103,23 @@ shell environment variable still wins). `.env*.local` is gitignored.
 ## Connecting to your agent
 
 The easiest way is `wrangl install` or `wrangl add`, which writes the config for
-you (Claude Desktop or Cursor), preserving any existing servers and backing up
-the file first.
+you — Claude Desktop, Cursor, Windsurf, Cline, Zed, or VS Code — preserving any
+existing servers and backing up the file first.
 
 ```bash
 wrangl install https://petstore3.swagger.io   # to Claude Desktop
 wrangl add stripe --client cursor             # to Cursor
+wrangl add github --client windsurf           # to Windsurf
+wrangl add github --client cline              # to Cline
+wrangl add github --client zed                # to Zed
+wrangl add github --client vscode             # to VS Code (.vscode/mcp.json)
 wrangl add github --include "repos*" --exclude "*webhook*"
 wrangl install <api> --print                  # just print the config block
 ```
+
+Zed and VS Code use a different config shape than the rest (`context_servers`
+with `source: "custom"` for Zed; `servers` with `type: "stdio"` for VS Code) —
+`wrangl install` handles that automatically per `--client`.
 
 ### Filtering tools on huge APIs
 
@@ -456,7 +465,7 @@ src/
   controlplane/api.ts            Fastify REST API + hosted MCP endpoints
   controlplane/dashboard.html    Self-contained dashboard page
   controlplane/seed.ts           Prebuilt server anchors + catalog
-  clients.ts            Write servers into Claude Desktop / Cursor configs
+  clients.ts            Write servers into supported agent clients' configs
   cli.ts                install / add / catalog / generate / inspect / logs / serve
 prebuilt/               Catalog manifest + bundled specs
 examples/               Sample specs to try

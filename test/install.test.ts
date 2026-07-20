@@ -7,6 +7,10 @@ import { join } from "node:path";
 import {
   installServer,
   clientConfigPath,
+  clientConfigKey,
+  clientEntry,
+  clientLabel,
+  isClientName,
   selfCommand,
   buildServerEntry,
 } from "../src/clients.js";
@@ -89,6 +93,64 @@ test("buildServerEntry forwards include/exclude filter flags", () => {
 test("clientConfigPath points at the right file per client", () => {
   assert.match(clientConfigPath("cursor", "/home/u"), /\.cursor[/\\]mcp\.json$/);
   assert.match(clientConfigPath("claude", "/home/u"), /[Cc]laude/);
+  assert.match(clientConfigPath("windsurf", "/home/u"), /windsurf[/\\]mcp_config\.json$/);
+  assert.match(clientConfigPath("cline", "/home/u"), /cline_mcp_settings\.json$/);
+  assert.match(clientConfigPath("zed", "/home/u"), /zed[/\\]settings\.json$/);
+  assert.match(
+    clientConfigPath("vscode", "/home/u", "/proj"),
+    /[/\\]proj[/\\]\.vscode[/\\]mcp\.json$/,
+  );
+});
+
+test("clientConfigKey and clientEntry shape entries per client", () => {
+  const entry = { command: "node", args: ["cli.js"] };
+
+  assert.equal(clientConfigKey("claude"), "mcpServers");
+  assert.equal(clientConfigKey("windsurf"), "mcpServers");
+  assert.equal(clientConfigKey("cline"), "mcpServers");
+  assert.deepEqual(clientEntry("claude", entry), entry);
+
+  assert.equal(clientConfigKey("vscode"), "servers");
+  assert.deepEqual(clientEntry("vscode", entry), { type: "stdio", command: "node", args: ["cli.js"] });
+
+  assert.equal(clientConfigKey("zed"), "context_servers");
+  assert.deepEqual(clientEntry("zed", entry), { source: "custom", command: "node", args: ["cli.js"] });
+});
+
+test("isClientName validates against the supported set", () => {
+  assert.equal(isClientName("vscode"), true);
+  assert.equal(isClientName("windsurf"), true);
+  assert.equal(isClientName("notaclient"), false);
+});
+
+test("clientLabel names every supported client", () => {
+  assert.equal(clientLabel("cursor"), "Cursor");
+  assert.equal(clientLabel("windsurf"), "Windsurf");
+  assert.equal(clientLabel("cline"), "Cline");
+  assert.equal(clientLabel("zed"), "Zed");
+  assert.equal(clientLabel("vscode"), "VS Code");
+  assert.equal(clientLabel("claude"), "Claude Desktop");
+});
+
+test("installServer supports a custom top-level config key, preserving other settings", async () => {
+  const path = join(await dir(), "settings.json");
+  writeFileSync(path, JSON.stringify({ unrelated_setting: true }));
+
+  const res = installServer(
+    path,
+    "petstore",
+    { source: "custom", command: "node", args: ["cli.js"] },
+    "context_servers",
+  );
+
+  assert.equal(res.replaced, false);
+  const cfg = JSON.parse(readFileSync(path, "utf8"));
+  assert.deepEqual(cfg.context_servers.petstore, {
+    source: "custom",
+    command: "node",
+    args: ["cli.js"],
+  });
+  assert.equal(cfg.unrelated_setting, true, "unrelated settings must survive");
 });
 
 test("extractSpecUrls finds the spec a docs page references", () => {

@@ -52,9 +52,12 @@ import {
 import { buildControlPlane } from "./controlplane/api.js";
 import {
   buildServerEntry,
+  clientConfigKey,
   clientConfigPath,
+  clientEntry,
   clientLabel,
   installServer,
+  isClientName,
   type ClientName,
 } from "./clients.js";
 import type { RequestLog } from "./runtime/proxy.js";
@@ -289,7 +292,11 @@ program
 
 const installOptions = (cmd: Command): Command =>
   cmd
-    .option("-c, --client <name>", "Agent client to configure: claude | cursor", "claude")
+    .option(
+      "-c, --client <name>",
+      "Agent client to configure: claude | cursor | windsurf | cline | zed | vscode",
+      "claude",
+    )
     .option("--config <path>", "Write to a specific MCP config file instead")
     .option("-n, --name <name>", "Name for the server in the client config")
     .option("-b, --base-url <url>", "Upstream API base URL override")
@@ -508,6 +515,14 @@ async function runInstall(
     exclude?: string[];
   },
 ): Promise<void> {
+  const clientName = options.client ?? "claude";
+  if (!isClientName(clientName)) {
+    throw new Error(
+      `Unknown client "${clientName}". Use one of: claude, cursor, windsurf, cline, zed, vscode.`,
+    );
+  }
+  const client: ClientName = clientName;
+
   const spec = await resolveApiTarget(api);
   console.error(`→ reading ${spec}…`);
   const generated = await ingest(spec, { baseUrl: options.baseUrl });
@@ -520,14 +535,16 @@ async function runInstall(
   });
   console.error(`→ generated ${generated.tools.length} tools from ${generated.name}`);
 
+  const configKey = clientConfigKey(client);
+  const shapedEntry = clientEntry(client, entry);
+
   if (options.print) {
-    console.log(JSON.stringify({ mcpServers: { [name]: entry } }, null, 2));
+    console.log(JSON.stringify({ [configKey]: { [name]: shapedEntry } }, null, 2));
     return;
   }
 
-  const client = (options.client ?? "claude") as ClientName;
   const path = options.config ?? clientConfigPath(client);
-  const result = installServer(path, name, entry);
+  const result = installServer(path, name, shapedEntry, configKey);
   const target = options.config ? "your client" : clientLabel(client);
 
   // Nudge the user if the API needs a credential before it will actually work.
