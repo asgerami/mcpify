@@ -74,7 +74,8 @@ npm run start -- install https://petstore3.swagger.io
 - **A real dashboard.** Create servers, run any tool interactively, browse
   request/response logs, and view per-tool analytics.
 - **Production-ready.** Docker image, per-server tokens and rate limits, admin
-  auth, and a Postgres backend for running multiple replicas.
+  auth, automatic retry with backoff on transient upstream failures, and a
+  Postgres backend for running multiple replicas.
 
 ## How it works
 

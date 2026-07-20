@@ -20,6 +20,12 @@ While the project is pre-1.0, minor versions may include breaking changes.
   spec is still Swagger 2.0), `sendgrid` (3 tools; mail-sending API only —
   SendGrid's spec is split into 46 per-resource files with no combined doc),
   and `pagerduty` (465 tools).
+- **Proxy resilience.** Transient upstream failures (network errors, or a
+  502/503/504/500) are now retried automatically with exponential backoff —
+  2 retries by default, configurable via `ProxyContext.maxRetries`. Retries
+  are limited to methods with no side effect to duplicate (GET, HEAD,
+  OPTIONS, PUT, DELETE); POST/PATCH responses are returned as-is so a lost
+  response never risks re-running a write twice.
 
 ## [0.2.0] - 2026-07-18
 

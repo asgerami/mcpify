@@ -9,6 +9,7 @@ The complete reference. For the elevator pitch and quick start, see the
 - [CLI reference](#cli-reference)
 - [Connecting to your agent](#connecting-to-your-agent)
 - [Authentication](#authentication)
+- [Reliability](#reliability)
 - [Semantic enrichment (LLM pass)](#semantic-enrichment-llm-pass)
 - [Spec auto-discovery](#spec-auto-discovery)
 - [Usage logs](#usage-logs)
@@ -174,6 +175,16 @@ wrangl generate --spec api.yaml --auth bearerAuth=my-token
 ```
 
 For Basic auth, pass the value as `user:password`.
+
+## Reliability
+
+Transient upstream failures — a network error, or a 500/502/503/504 response —
+are retried automatically with exponential backoff (2 retries by default).
+Retries are limited to methods with nothing to duplicate if a lost response
+actually landed: `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`. `POST`/`PATCH`
+responses are returned as-is, so a flaky network never risks silently running
+a write (an order, a charge, an email) twice. Library callers can tune this
+via `ProxyContext.maxRetries` (`0` disables it).
 
 ## Semantic enrichment (LLM pass)
 

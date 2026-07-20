@@ -13,6 +13,13 @@ export interface ProxyContext {
    * in place), so the call is retried once. Enables OAuth token auto-refresh.
    */
   onUnauthorized?: (oauthSchemes: string[]) => Promise<boolean>;
+  /**
+   * Max automatic retries for transient upstream failures: network errors, or
+   * a 5xx response to a method with no side effects to duplicate (GET, HEAD,
+   * OPTIONS, PUT, DELETE — never POST/PATCH, to avoid re-running a write whose
+   * response was merely lost). Default 2; set 0 to disable.
+   */
+  maxRetries?: number;
 }
 
 export interface RequestLog {
@@ -30,6 +37,24 @@ export interface RequestLog {
 
 /** Cap stored payloads so the log store doesn't balloon on large responses. */
 const MAX_PAYLOAD_CHARS = 8192;
+
+/** 5xx statuses worth an automatic retry — gateway hiccups and generic server errors. */
+const RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
+/** Methods with no side effect to duplicate if a retried call actually lands twice. */
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE"]);
+const DEFAULT_MAX_RETRIES = 2;
+const RETRY_BASE_DELAY_MS = 250;
+const RETRY_MAX_DELAY_MS = 2000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Full jitter exponential backoff, capped, so concurrent retries don't sync up. */
+function backoffDelay(attempt: number): number {
+  const cap = Math.min(RETRY_BASE_DELAY_MS * 2 ** attempt, RETRY_MAX_DELAY_MS);
+  return Math.random() * cap;
+}
 
 function truncate(text: string): string {
   return text.length > MAX_PAYLOAD_CHARS
@@ -55,62 +80,88 @@ export async function executeTool(
   ctx: ProxyContext,
 ): Promise<ProxyResult> {
   const start = performance.now();
+  const maxRetries = ctx.maxRetries ?? DEFAULT_MAX_RETRIES;
+  const canRetryStatus = IDEMPOTENT_METHODS.has(tool.method.toUpperCase());
   let url = "";
-  try {
-    let built = buildRequest(tool, args, ctx);
-    url = built.url.toString();
 
-    let response = await fetch(built.url, {
-      method: tool.method,
-      headers: built.headers,
-      body: built.body,
-    });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      let built = buildRequest(tool, args, ctx);
+      url = built.url.toString();
 
-    // On a 401 for an OAuth2-secured tool, refresh the token and retry once.
-    if (response.status === 401 && ctx.onUnauthorized) {
-      const oauthSchemes = tool.security.filter(
-        (s) => ctx.schemes[s]?.type === "oauth2",
-      );
-      if (oauthSchemes.length && (await ctx.onUnauthorized(oauthSchemes))) {
-        built = buildRequest(tool, args, ctx); // creds updated in place by refresh
-        response = await fetch(built.url, {
-          method: tool.method,
-          headers: built.headers,
-          body: built.body,
-        });
+      let response = await fetch(built.url, {
+        method: tool.method,
+        headers: built.headers,
+        body: built.body,
+      });
+
+      // On a 401 for an OAuth2-secured tool, refresh the token and retry once.
+      if (response.status === 401 && ctx.onUnauthorized) {
+        const oauthSchemes = tool.security.filter(
+          (s) => ctx.schemes[s]?.type === "oauth2",
+        );
+        if (oauthSchemes.length && (await ctx.onUnauthorized(oauthSchemes))) {
+          built = buildRequest(tool, args, ctx); // creds updated in place by refresh
+          response = await fetch(built.url, {
+            method: tool.method,
+            headers: built.headers,
+            body: built.body,
+          });
+        }
       }
+
+      if (
+        canRetryStatus &&
+        RETRYABLE_STATUSES.has(response.status) &&
+        attempt < maxRetries
+      ) {
+        console.error(
+          `⚠ ${tool.method} ${url} → ${response.status}; retrying (${attempt + 1}/${maxRetries})…`,
+        );
+        await sleep(backoffDelay(attempt));
+        continue;
+      }
+
+      const contentType = response.headers.get("content-type");
+      const body = await response.text();
+      const result: ProxyResult = {
+        statusCode: response.status,
+        ok: response.ok,
+        body,
+        contentType,
+      };
+
+      ctx.onLog?.({
+        tool: tool.name,
+        method: tool.method,
+        url: redactUrl(built.url),
+        statusCode: response.status,
+        latencyMs: Math.round(performance.now() - start),
+        requestBody: truncate(JSON.stringify(args)),
+        responseBody: truncate(body),
+      });
+      return result;
+    } catch (err) {
+      if (attempt < maxRetries) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(
+          `⚠ ${tool.method} ${url || tool.pathTemplate} failed (${message}); retrying (${attempt + 1}/${maxRetries})…`,
+        );
+        await sleep(backoffDelay(attempt));
+        continue;
+      }
+
+      const message = err instanceof Error ? err.message : String(err);
+      ctx.onLog?.({
+        tool: tool.name,
+        method: tool.method,
+        url,
+        latencyMs: Math.round(performance.now() - start),
+        error: message,
+        requestBody: truncate(JSON.stringify(args)),
+      });
+      throw new Error(`Upstream request failed: ${message}`);
     }
-
-    const contentType = response.headers.get("content-type");
-    const body = await response.text();
-    const result: ProxyResult = {
-      statusCode: response.status,
-      ok: response.ok,
-      body,
-      contentType,
-    };
-
-    ctx.onLog?.({
-      tool: tool.name,
-      method: tool.method,
-      url: redactUrl(built.url),
-      statusCode: response.status,
-      latencyMs: Math.round(performance.now() - start),
-      requestBody: truncate(JSON.stringify(args)),
-      responseBody: truncate(body),
-    });
-    return result;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    ctx.onLog?.({
-      tool: tool.name,
-      method: tool.method,
-      url,
-      latencyMs: Math.round(performance.now() - start),
-      error: message,
-      requestBody: truncate(JSON.stringify(args)),
-    });
-    throw new Error(`Upstream request failed: ${message}`);
   }
 }
 
