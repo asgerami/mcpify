@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Command } from "commander";
+
+/** Read from package.json rather than hardcoding, so it can't drift on release. */
+const pkg: { version: string } = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"),
+);
 
 /**
  * Load environment variables from .env.local then .env (in the working
@@ -76,7 +82,7 @@ const program = new Command();
 program
   .name("wrangl")
   .description("Turn any REST API into an agent-ready MCP server in minutes.")
-  .version("0.2.0");
+  .version(pkg.version);
 
 program
   .command("generate")
