@@ -1,6 +1,6 @@
 {
   "name": "@asgerami/wrangl",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Turn any REST API into an agent-ready MCP server in minutes.",
   "type": "module",
   "publishConfig": {

@@ -9,6 +9,8 @@ While the project is pre-1.0, minor versions may include breaking changes.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-20
+
 ### Added
 
 - **More `install`/`add` clients.** `--client` now also accepts `windsurf`,
@@ -88,6 +90,7 @@ First public release. Wrangl turns any REST API into an agent-ready MCP server.
 - **Deployment.** Docker image and Compose files, Caddy TLS, admin token,
   per-server tokens and rate limits, and a Postgres backend for multiple replicas.
 
-[Unreleased]: https://github.com/asgerami/wrangl/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/asgerami/wrangl/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/asgerami/wrangl/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/asgerami/wrangl/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/asgerami/wrangl/releases/tag/v0.1.0
